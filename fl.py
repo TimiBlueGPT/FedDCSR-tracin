@@ -70,7 +70,10 @@ def run_fl(clients, server, args):
                     round, args, global_params=server.global_params)
                 if hasattr(server, "add_eval_score"):
                     server.add_eval_score(c_id, clients[c_id].latest_eval_score)
-            print(server.attributor.dump_topk())
+            #logging.info("Every client's tracin score is here:%s",str(server.attributor.dump_topk()))
+            #print(server.attributor.dump_topk())
+            topk_scores = server.attributor.dump_topk()
+            print(f"Normalized TracIn scores: {topk_scores}")
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
                 if args.method == "FedDCSR":

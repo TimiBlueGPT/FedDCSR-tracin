@@ -189,9 +189,7 @@ class Client:
         if grad_vector is None or grad_vector.numel() == 0:
             return None
         g_c_vector = -delta_vector / lr
-        eps = torch.finfo(g_c_vector.dtype).eps
-        g_c_vector = g_c_vector / (torch.norm(g_c_vector) + eps)
-        grad_vector = grad_vector / (torch.norm(grad_vector) + eps)
+
         return torch.dot(g_c_vector, grad_vector).item()
 
     def evaluation(self, mode="valid"):

@@ -13,7 +13,17 @@ class ClientAttributor:
         self.scores[cid] += float(score)
 
     def dump_topk(self, k=20):
-        return sorted(self.scores.items(), key=lambda x: x[1], reverse=True)[:k]
+        if not self.scores:
+            return []
+        min_score = min(self.scores.values())
+        max_score = max(self.scores.values())
+        denom = max_score - min_score
+        if denom <= 0:
+            normalized = {cid: 0.0 for cid in self.scores}
+        else:
+            normalized = {cid: (score - min_score) / denom
+                          for cid, score in self.scores.items()}
+        return sorted(normalized.items(), key=lambda x: x[1], reverse=True)[:k]
 
 class Server(object):
     def __init__(self, args, init_global_params):
