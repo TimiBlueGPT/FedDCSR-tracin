@@ -137,7 +137,7 @@ class Client:
     def _get_eval_batch(self):
         if self._cached_eval_batch is not None:
             return self._cached_eval_batch
-        dataset = self.valid_dataloader.dataset
+        dataset = self.train_dataloader.dataset
         if len(dataset) == 0:
             return None
         eval_batch_size = min(self.args.batch_size, len(dataset))
@@ -189,6 +189,9 @@ class Client:
         if grad_vector is None or grad_vector.numel() == 0:
             return None
         g_c_vector = -delta_vector / lr
+        eps = torch.finfo(g_c_vector.dtype).eps
+        g_c_vector = g_c_vector / (torch.norm(g_c_vector) + eps)
+        grad_vector = grad_vector / (torch.norm(grad_vector) + eps)
         return torch.dot(g_c_vector, grad_vector).item()
 
     def evaluation(self, mode="valid"):
