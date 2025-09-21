@@ -10,7 +10,7 @@ from utils.io_utils import ensure_dir
 
 
 class Client:
-    def __init__(self, model_fn, c_id, args, adj, train_dataset, valid_dataset, test_dataset):
+    def __init__(self, model_fn, c_id, args, adj, train_dataset, valid_dataset, test_dataset,tracin_dataset):
         # Used for computing the mask in self-attention module
         self.num_items = train_dataset.num_items
         self.domain = train_dataset.domain
@@ -34,6 +34,9 @@ class Client:
             valid_dataset, batch_size=args.batch_size, shuffle=False)
         self.test_dataloader = SeqDataloader(
             test_dataset, batch_size=args.batch_size, shuffle=False)
+        self.tracin_dataloader = SeqDataloader(
+            train_dataset, batch_size=args.batch_size, shuffle=False
+        )
 
         # Compute the number of samples for each client
         self.n_samples_train = len(train_dataset)
@@ -137,7 +140,7 @@ class Client:
     def _get_eval_batch(self):
         if self._cached_eval_batch is not None:
             return self._cached_eval_batch
-        dataset = self.train_dataloader.dataset
+        dataset = self.tracin_dataloader.dataset
         if len(dataset) == 0:
             return None
         eval_batch_size = min(self.args.batch_size, len(dataset))

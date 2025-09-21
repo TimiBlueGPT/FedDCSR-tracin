@@ -139,12 +139,12 @@ def main():
 
     init_logger(args)
 
-    train_datasets, valid_datasets, test_datasets, adjs = load_dataset(args)
+    train_datasets, valid_datasets, test_datasets,tracin_dataset, adjs = load_dataset(args)
 
     n_clients = len(args.domains)
     clients = [Client(ModelTrainer, c_id, args, adjs[c_id],
                       train_datasets[c_id], valid_datasets[c_id],
-                      test_datasets[c_id]) for c_id in range(n_clients)]
+                      test_datasets[c_id],tracin_dataset[c_id]) for c_id in range(n_clients)]
     # Initialize the aggretation weight
     init_clients_weight(clients)
 

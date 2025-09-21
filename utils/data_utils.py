@@ -9,6 +9,7 @@ def load_dataset(args):
     client_train_datasets = []
     client_valid_datasets = []
     client_test_datasets = []
+    client_tracin_datasets=[]
     for domain in args.domains:
         if args.method == "FedDCSR":
             model = "DisenVGSAN"
@@ -25,15 +26,26 @@ def load_dataset(args):
         test_dataset = SeqDataset(
             domain, model, mode="test", max_seq_len=args.max_seq_len,
             load_prep=args.load_prep)
+        tracin_dataset = SeqDataset(
+            domain, model, mode="tracin", max_seq_len=args.max_seq_len,
+            load_prep=args.load_prep
+        )
 
         client_train_datasets.append(train_dataset)
         client_valid_datasets.append(valid_dataset)
         client_test_datasets.append(test_dataset)
+        client_tracin_datasets.append(tracin_dataset)
 
     adjs = []
+    adjs_tracin = []
     for train_dataset, domain in zip(client_train_datasets, args.domains):
         local_graph = LocalGraph(args, domain, train_dataset.num_items)
         adjs.append(local_graph.adj)
+        print("%s graph loaded!" % domain)
+
+    for tracin_dataset, domain in zip(client_tracin_datasets, args.domains):
+        local_graph = LocalGraph(args, domain, tracin_dataset.num_items)
+        adjs_tracin.append(local_graph.adj)
         print("%s graph loaded!" % domain)
 
     if args.cuda:
@@ -44,8 +56,11 @@ def load_dataset(args):
     for idx, adj in enumerate(adjs):
         adjs[idx] = adj.to(device)
 
+    for idx, adj in enumerate(adjs):
+        adjs_tracin[idx] = adj.to(device)
+
     return client_train_datasets, client_valid_datasets, \
-        client_test_datasets, adjs
+        client_test_datasets,client_tracin_datasets, adjs
 
 
 def init_clients_weight(clients):

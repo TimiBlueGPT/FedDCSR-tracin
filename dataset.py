@@ -24,7 +24,7 @@ class SeqDataset(Dataset):
                  load_prep=True):
         assert (model in ["DisenVGSAN", "VGSAN", "SASRec",
                 "VSAN", "ContrastVAE", "CL4SRec", "DuoRec"])
-        assert (mode in ["train", "valid", "test"])
+        assert (mode in ["train", "valid", "test","tracin"])
 
         self.domain = domain
         self.model = model
