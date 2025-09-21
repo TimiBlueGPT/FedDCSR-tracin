@@ -137,7 +137,7 @@ class Client:
     def _get_eval_batch(self):
         if self._cached_eval_batch is not None:
             return self._cached_eval_batch
-        dataset = self.valid_dataloader.dataset
+        dataset = self.train_dataloader.dataset
         if len(dataset) == 0:
             return None
         eval_batch_size = min(self.args.batch_size, len(dataset))
