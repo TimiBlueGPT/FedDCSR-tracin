@@ -12,18 +12,18 @@ class ClientAttributor:
     def add_score(self, cid, score: float):
         self.scores[cid] += float(score)
 
+    import math
+
     def dump_topk(self, k=20):
         if not self.scores:
             return []
-        min_score = min(self.scores.values())
-        max_score = max(self.scores.values())
-        denom = max_score - min_score
-        if denom <= 0:
-            normalized = {cid: 0.0 for cid in self.scores}
-        else:
-            normalized = {cid: (score - min_score) / denom
-                          for cid, score in self.scores.items()}
-        return sorted(normalized.items(), key=lambda x: x[1], reverse=True)[:k]
+
+        # 直接对分数取 log，避免 0 时报错用 log1p
+        log_scores = {cid: math.log1p(score) for cid, score in self.scores.items()}
+
+        # 按 log 分数排序
+        return sorted(log_scores.items(), key=lambda x: x[1], reverse=True)[:k]
+
 
 class Server(object):
     def __init__(self, args, init_global_params):
