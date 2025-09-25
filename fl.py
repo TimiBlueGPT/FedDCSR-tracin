@@ -68,9 +68,8 @@ def run_fl(clients, server, args):
                 # Train one client
                 clients[c_id].train_epoch(
                     round, args, global_params=server.global_params)
-                if hasattr(server, "add_eval_score"):
-                    server.add_eval_score(c_id, clients[c_id].latest_eval_score)
-            print(server.attributor.dump_topk())
+
+
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
                 if args.method == "FedDCSR":

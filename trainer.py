@@ -76,9 +76,17 @@ class ModelTrainer(Trainer):
             args.optimizer, self.params, args.lr)
         self.step = 0
 
-    def compute_loss(self, sessions, adj, num_items, args, global_params=None,
-                         include_prox=True, update_state=True):
+    def train_batch(self, sessions, adj, num_items, args, global_params=None):
+        """Trains the model for one batch.
 
+        Args:
+            sessions: Input user sequences.
+            adj: Adjacency matrix of the local graph.
+            num_items: Number of items in the current domain.
+            args: Other arguments for training.
+            global_params: Global model parameters used in `FedProx` method.
+        """
+        self.optimizer.zero_grad()
 
         if (self.method == "FedDCSR") or ("VGSAN" in self.method):
             self.model.graph_convolution(adj)
@@ -88,17 +96,18 @@ class ModelTrainer(Trainer):
         if self.method == "FedDCSR":
 
             seq, ground, ground_mask, js_neg_seqs, contrast_aug_seqs = sessions
-            result, result_exclusive, mu_s, logvar_s, z_s, mu_e, \
+            result, result_exclusive, mu_s, logvar_s, self.z_s[0], mu_e, \
                 logvar_e, z_e, neg_z_e, aug_z_e = self.model(
                     seq,
                 neg_seqs=js_neg_seqs,
                 aug_seqs=contrast_aug_seqs)
-            z_s = z_s * ground_mask.unsqueeze(-1)
-            if update_state:
-                self.z_s[0] = z_s
+            # Broadcast in last dim. it well be used to compute `z_g` by
+            # federated aggregation later
+            self.z_s[0] = self.z_s[0] * ground_mask.unsqueeze(-1)
+
             loss = self.disen_vgsan_loss_fn(result, result_exclusive, mu_s,
                                             logvar_s, mu_e, logvar_e,
-                                            ground, z_s, self.z_g[0],
+                                            ground, self.z_s[0], self.z_g[0],
                                             z_e, neg_z_e, aug_z_e, ground_mask,
                                             num_items, self.step)
 
@@ -107,7 +116,7 @@ class ModelTrainer(Trainer):
             result, mu, logvar = self.model(seq)
             loss = self.vgsan_loss_fn(
                 result, mu, logvar, ground, ground_mask, num_items, self.step)
-            if include_prox and "Fed" in self.method and args.mu:
+            if "Fed" in self.method and args.mu:
                 loss += self.prox_reg(
                     [dict(self.model.encoder.named_parameters())],
                     global_params, args.mu)
@@ -117,7 +126,7 @@ class ModelTrainer(Trainer):
             result, mu, logvar = self.model(seq)
             loss = self.vsan_loss_fn(
                 result, mu, logvar, ground, ground_mask, num_items, self.step)
-            if include_prox and self.method == "FedVSAN" and args.mu:
+            if self.method == "FedVSAN" and args.mu:
                 loss += self.prox_reg(
                     [dict(self.model.encoder.named_parameters())],
                     global_params, args.mu)
@@ -127,7 +136,7 @@ class ModelTrainer(Trainer):
             # result： (batch_size, seq_len, hidden_size)
             result = self.model(seq)
             loss = self.sasrec_loss_fn(result, ground, ground_mask, num_items)
-            if include_prox and "Fed" in self.method and args.mu:
+            if "Fed" in self.method and args.mu:
                 loss += self.prox_reg(
                     [dict(self.model.encoder.named_parameters())],
                     global_params, args.mu)
@@ -140,7 +149,7 @@ class ModelTrainer(Trainer):
             loss = self.cl4srec_loss_fn(
                 result, aug_seqs_fea1, aug_seqs_fea2, ground, ground_mask,
                 num_items)
-            if include_prox and "Fed" in self.method and args.mu:
+            if "Fed" in self.method and args.mu:
                 loss += self.prox_reg(
                     [dict(self.model.encoder.named_parameters())],
                     global_params, args.mu)
@@ -151,7 +160,7 @@ class ModelTrainer(Trainer):
             result, seqs_fea, aug_seqs_fea = self.model(seq, aug_seqs=aug_seqs)
             loss = self.duorec_loss_fn(
                 result, seqs_fea, aug_seqs_fea, ground, ground_mask, num_items)
-            if include_prox and "Fed" in self.method and args.mu:
+            if "Fed" in self.method and args.mu:
                 loss += self.prox_reg(
                     [dict(self.model.encoder.named_parameters())],
                     global_params, args.mu)
@@ -165,21 +174,14 @@ class ModelTrainer(Trainer):
                                             aug_mu, aug_logvar, aug_z, alpha,
                                             ground, ground_mask, num_items,
                                             self.step)
-            if include_prox and "Fed" in self.method and args.mu:
+            if "Fed" in self.method and args.mu:
                 loss += self.prox_reg(
                     [dict(self.model.encoder.named_parameters())],
                     global_params, args.mu)
         else:
             raise NotImplementedError
 
-        return loss
 
-    def train_batch(self, sessions, adj, num_items, args, global_params=None):
-        """Trains the model for one batch."""
-        self.optimizer.zero_grad()
-        loss = self.compute_loss(sessions, adj, num_items, args,
-                                 global_params=global_params,
-                                 include_prox=True, update_state=True)
         loss.backward()
         self.optimizer.step()
         self.step += 1

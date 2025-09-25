@@ -45,9 +45,7 @@ class Client:
         self.MRR, self.NDCG_5, self.NDCG_10, self.HR_1, self.HR_5, self.HR_10 \
             = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         self.init_global_params = copy.deepcopy(self.get_params())
-        self.latest_eval_score = None
-        self._pre_train_state = None
-        self._cached_eval_batch = None
+
 
     def train_epoch(self, round, args, global_params=None):
         """Trains one client with its own training data for one epoch.
@@ -58,7 +56,6 @@ class Client:
             global_params: Global model parameters used in `FedProx` method.
         """
         self.trainer.model.train()
-        self._pre_train_state = copy.deepcopy(self.trainer.model.state_dict())
         for _ in range(args.local_epoch):
             loss = 0
             step = 0
@@ -74,122 +71,12 @@ class Client:
                 step += 1
 
             gc.collect()
-        delta_vector = self._gather_shared_param_deltas_vector()
-        post_train_state = copy.deepcopy(self.trainer.model.state_dict())
-        self.latest_eval_score = self._compute_eval_tracin_score(
-            delta_vector, post_train_state)
+
         logging.info("Epoch {}/{} - client {} -  Training Loss: {:.3f}".format(
             round, args.epochs, self.c_id, loss / step))
         return self.n_samples_train
 
-    def _get_shared_modules(self):
-        modules = []
-        if self.method == "FedDCSR":
-            modules.append(self.model.encoder_s)
-        elif "VGSAN" in self.method:
-            modules.append(self.model.encoder)
-        elif "SASRec" in self.method:
-            modules.append(self.model.encoder)
-        elif "VSAN" in self.method:
-            modules.extend([self.model.encoder, self.model.decoder])
-        elif "ContrastVAE" in self.method:
-            modules.extend([self.model.encoder, self.model.decoder])
-        elif "CL4SRec" in self.method:
-            modules.append(self.model.encoder)
-        elif "DuoRec" in self.method:
-            modules.append(self.model.encoder)
-        return modules
 
-    def _gather_shared_param_deltas_vector(self):
-        """
-        计算模型参数的变化量，并且将其展平
-        """
-        modules = self._get_shared_modules()
-        if not modules or self.init_global_params is None:
-            return None
-        deltas = []
-        for branch_idx, module in enumerate(modules):
-            if branch_idx >= len(self.init_global_params):
-                return None
-            init_state = self.init_global_params[branch_idx]
-            for name, param in module.named_parameters():
-                init_tensor = init_state[name].to(param.device)
-                deltas.append((param.detach() - init_tensor).reshape(-1))
-        if not deltas:
-            return None
-        return torch.cat(deltas)
-
-    def _gather_shared_grad_vector(self):
-        modules = self._get_shared_modules()
-        if not modules:
-            return None
-        grads = []
-        for module in modules:
-            for _, param in module.named_parameters():
-                if param.grad is None:
-                    grads.append(torch.zeros_like(param, device=param.device).reshape(-1))
-                else:
-                    grads.append(param.grad.detach().reshape(-1))
-        if not grads:
-            return None
-        return torch.cat(grads)
-
-    def _get_eval_batch(self):
-        if self._cached_eval_batch is not None:
-            return self._cached_eval_batch
-        dataset = self.train_dataloader.dataset
-        if len(dataset) == 0:
-            return None
-        eval_batch_size = min(self.args.batch_size, len(dataset))
-        batch_sessions = []
-        for idx in range(eval_batch_size):
-            _, session = dataset[idx]
-            batch_sessions.append(copy.deepcopy(session))
-        if not batch_sessions:
-            return None
-        batch_sessions = list(zip(*batch_sessions))
-        self._cached_eval_batch = tuple(np.array(x, dtype=np.int64)
-                                        for x in batch_sessions)
-        return self._cached_eval_batch
-
-    def _compute_eval_tracin_score(self, delta_vector, post_train_state):
-        if delta_vector is None or self._pre_train_state is None:
-            return None
-        if delta_vector.numel() == 0:
-            return None
-        eval_batch = self._get_eval_batch()
-        if eval_batch is None:
-            return None
-        if not self.trainer.optimizer.param_groups:
-            return None
-        lr = self.trainer.optimizer.param_groups[0].get("lr", None)
-        if lr is None or lr == 0:
-            return None
-        saved_z_s = None
-        if self.method == "FedDCSR" and self.z_s[0] is not None:
-            saved_z_s = copy.deepcopy(self.z_s[0].detach().clone())
-        prev_training_mode = self.trainer.model.training
-        self.trainer.model.load_state_dict(self._pre_train_state)
-        self.trainer.model.train()
-        self.trainer.optimizer.zero_grad()
-        loss = self.trainer.compute_loss(
-            eval_batch, self.adj, self.num_items, self.args,
-            global_params=self.init_global_params,
-            include_prox=False, update_state=False)
-        loss.backward()
-        grad_vector = self._gather_shared_grad_vector()
-        self.trainer.optimizer.zero_grad()
-        self.trainer.model.load_state_dict(post_train_state)
-        if saved_z_s is not None:
-            self.z_s[0] = saved_z_s
-        if prev_training_mode:
-            self.trainer.model.train()
-        else:
-            self.trainer.model.eval()
-        if grad_vector is None or grad_vector.numel() == 0:
-            return None
-        g_c_vector = -delta_vector / lr
-        return torch.dot(g_c_vector, grad_vector).item()
 
     def evaluation(self, mode="valid"):
         """Evaluates one client with its own valid/test data for one epoch.
