@@ -54,11 +54,11 @@ def run_fl(clients, server, args):
                            args.optimizer, args.lr_decay,
                            patience=args.ld_patience, verbose=True)
         for round in range(1, args.epochs + 1):
-            arr = np.array([3, 1, 2, 0])
+            #arr = np.array([3, 1, 2, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
 
             # Train with these clients
-            for c_id in tqdm(arr, ascii=True):
+            for c_id in tqdm(random_cids, ascii=True):
                 if "Fed" in args.method:
                     # Restore global parameters to client's model
                     clients[c_id].set_global_params(server.get_global_params())
@@ -69,12 +69,14 @@ def run_fl(clients, server, args):
                 clients[c_id].train_epoch(
                     round, args, global_params=server.global_params)
 
-
+            progress_scores = None
             if "Fed" in args.method:
-                server.aggregate_params(clients, random_cids)
+                progress_scores = server.aggregate_params(clients, random_cids)
                 if args.method == "FedDCSR":
                     server.aggregate_reps(clients, random_cids)
-
+            if progress_scores:
+                logging.info("Round %d progress-direction scores: %s",
+                             round, progress_scores)
             if round % args.eval_interval == 0:
                 eval_logs = {}
                 for c_id in tqdm(range(n_clients), ascii=True):

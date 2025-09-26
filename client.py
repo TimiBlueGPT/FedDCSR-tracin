@@ -149,14 +149,23 @@ class Client:
         assert hasattr(self, "init_global_params"), \
             "`init_global_params` missing. Did you forget to call `set_global_params`?"
         current_params = self.get_params()
+        current_lr = self.get_current_lr()
         grads = []
         for branch_idx in range(len(current_params)):
             branch_grads = {}
             for key in current_params[branch_idx]:
-                branch_grads[key] = (current_params[branch_idx][key]
-                                     - self.init_global_params[branch_idx][key])
+                delta = (current_params[branch_idx][key]
+                         - self.init_global_params[branch_idx][key])
+                branch_grads[key] = -delta / current_lr
             grads.append(branch_grads)
         return grads
+
+    def get_current_lr(self):
+        if not self.trainer.optimizer.param_groups:
+            return self.args.lr
+        # All parameter groups share the same learning rate in this setup.
+        return self.trainer.optimizer.param_groups[0]["lr"]
+
 
     def get_client_grads(self):
         grads = []
