@@ -52,7 +52,7 @@ class ModelTrainer(Trainer):
             self.z_s, self.z_g = [None], [None]
             self.discri = Discriminator(
                 config.hidden_size, max_seq_len).to(self.device)
-            self.enable_influence = bool(getattr(args, "enable_influence", False))
+            self.enable_influence = bool(getattr(args, "enable_influence", True))
             if self.enable_influence:
                 self.branch_param_groups = self._build_feddcsr_branch_params()
             else:
@@ -124,7 +124,7 @@ class ModelTrainer(Trainer):
                                             ground, self.z_s[0], self.z_g[0],
                                             z_e, neg_z_e, aug_z_e, ground_mask,
                                             num_items, self.step)
-            if self.enable_influence:
+            if not self.enable_influence:
                 branch_scores = compute_branch_influence(
                     loss,
                     self.branch_param_groups,
