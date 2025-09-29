@@ -46,6 +46,19 @@ class Client:
             = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         self.init_global_params = copy.deepcopy(self.get_params())
 
+    def _base_checkpoint_dir(self):
+        return os.path.join(
+            self.checkpoint_dir,
+            "domain_" + "".join([domain[0] for domain in self.args.domains]),
+            self.method + "_" + self.model_id,
+        )
+
+    def get_checkpoint_path(self, round_idx=None):
+        base_dir = self._base_checkpoint_dir()
+        if round_idx is not None:
+            base_dir = os.path.join(base_dir, f"round_{int(round_idx):04d}")
+        return os.path.join(base_dir, f"client{self.c_id}.pt")
+
 
     def train_epoch(self, round, args, global_params=None):
         """Trains one client with its own training data for one epoch.
@@ -225,16 +238,9 @@ class Client:
         assert (self.method == "FedDCSR")
         self.z_g[0] = copy.deepcopy(global_rep)
 
-    def save_params(self):
-        method_ckpt_path = os.path.join(self.checkpoint_dir,
-                                        "domain_" +
-                                        "".join([domain[0]
-                                                for domain
-                                                 in self.args.domains]),
-                                        self.method + "_" + self.model_id)
-        ensure_dir(method_ckpt_path, verbose=True)
-        ckpt_filename = os.path.join(
-            method_ckpt_path, "client%d.pt" % self.c_id)
+    def save_params(self, round_idx=None):
+        ckpt_filename = self.get_checkpoint_path(round_idx=round_idx)
+        ensure_dir(os.path.dirname(ckpt_filename), verbose=True)
         params = self.trainer.model.state_dict()
         try:
             torch.save(params, ckpt_filename)
@@ -243,12 +249,7 @@ class Client:
             print("[ Warning: Saving failed... continuing anyway. ]")
 
     def load_params(self):
-        ckpt_filename = os.path.join(self.checkpoint_dir,
-                                     "domain_" +
-                                     "".join([domain[0]
-                                             for domain in self.args.domains]),
-                                     self.method + "_" + self.model_id,
-                                     "client%d.pt" % self.c_id)
+        ckpt_filename = self.get_checkpoint_path()
         try:
             checkpoint = torch.load(ckpt_filename)
         except IOError:

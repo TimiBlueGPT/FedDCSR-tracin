@@ -182,10 +182,23 @@ class ModelTrainer(Trainer):
             raise NotImplementedError
 
 
-        loss.backward()
-        self.optimizer.step()
-        self.step += 1
-        return loss.item()
+        return loss
+
+    def compute_validation_loss(self, sessions, adj, num_items):
+        if (self.method == "FedDCSR") or ("VGSAN" in self.method):
+            self.model.graph_convolution(adj)
+
+        sessions = [torch.LongTensor(x).to(self.device) for x in sessions]
+
+        if self.method == "FedDCSR":
+            seq, ground_truth, _ = sessions
+            result = self.model(seq)
+            logits = result[:, -1, :-1]
+            loss = self.cs_criterion(logits, ground_truth)
+            return loss.mean()
+
+        raise NotImplementedError(
+            "Validation gradient computation is only implemented for FedDCSR.")
 
     def disen_vgsan_loss_fn(self, result, result_exclusive, mu_s, logvar_s,
                             mu_e, logvar_e, ground, z_s, z_g, z_e, neg_z_e,

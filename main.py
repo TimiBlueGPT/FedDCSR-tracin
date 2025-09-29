@@ -65,6 +65,18 @@ def arg_parse():
                         help="hyper parameter for FedProx")
     parser.add_argument("--checkpoint_dir", type=str,
                         default="checkpoint", help="Checkpoint Dir")
+    parser.add_argument("--checkpoint_interval", type=int, default=5,
+                        help="Interval (in rounds) to persist per-client checkpoints.")
+    parser.add_argument("--influence_train_sample_ratio", type=float, default=0.2,
+                        help="Fraction of local training samples used when approximating influence scores.")
+    parser.add_argument("--influence_max_train_samples", type=int, default=512,
+                        help="Upper bound on the number of local training samples used for influence approximation.")
+    parser.add_argument("--influence_hvp_damping", type=float, default=0.01,
+                        help="Damping factor used in the LiSSA inverse-HVP approximation.")
+    parser.add_argument("--influence_hvp_scale", type=float, default=25.0,
+                        help="Scaling constant used in the LiSSA inverse-HVP approximation.")
+    parser.add_argument("--influence_hvp_iterations", type=int, default=10,
+                        help="Number of iterations for the LiSSA inverse-HVP approximation.")
     parser.add_argument("--id", type=str, default="00",
                         help="Model ID under which to save models.")
     parser.add_argument("--do_eval", action="store_true")

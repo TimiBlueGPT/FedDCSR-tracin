@@ -3,7 +3,7 @@ import logging
 from tqdm import tqdm
 from utils.train_utils import EarlyStopping, LRDecay
 import numpy as np
-
+from influence import InfluenceCalculator
 
 def evaluation_logging(eval_logs, round, weights, mode="valid"):
     if mode == "valid":
@@ -74,7 +74,9 @@ def run_fl(clients, server, args):
                 server.aggregate_params(clients, random_cids)
                 if args.method == "FedDCSR":
                     server.aggregate_reps(clients, random_cids)
-
+            if args.checkpoint_interval and round % args.checkpoint_interval == 0:
+                for client in clients:
+                    client.save_params(round_idx=round)
             if round % args.eval_interval == 0:
                 eval_logs = {}
                 for c_id in tqdm(range(n_clients), ascii=True):
@@ -104,3 +106,5 @@ def run_fl(clients, server, args):
                 lr_decay(round, avg_eval_log, clients)
 
         load_and_eval_model(n_clients, clients, args)
+        if args.method == "FedDCSR":
+            InfluenceCalculator(clients, args).run()
