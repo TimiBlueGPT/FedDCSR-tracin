@@ -180,9 +180,10 @@ class ModelTrainer(Trainer):
                     global_params, args.mu)
         else:
             raise NotImplementedError
-
-
-        return loss
+        loss.backward()
+        self.optimizer.step()
+        self.step += 1
+        return loss.item()
 
     def compute_validation_loss(self, sessions, adj, num_items):
         if (self.method == "FedDCSR") or ("VGSAN" in self.method):
