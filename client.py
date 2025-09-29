@@ -7,7 +7,7 @@ import numpy as np
 import torch
 from dataloader import SeqDataloader
 from utils.io_utils import ensure_dir
-
+from utils.influence_utils import merge_influence_records
 
 class Client:
     def __init__(self, model_fn, c_id, args, adj, train_dataset, valid_dataset, test_dataset):
@@ -27,6 +27,7 @@ class Client:
         self.c_id = c_id
         self.args = args
         self.adj = adj
+        self.branch_influence_log = {"train": [], "valid": [], "test": []}
 
         self.train_dataloader = SeqDataloader(
             train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -59,18 +60,41 @@ class Client:
         for _ in range(args.local_epoch):
             loss = 0
             step = 0
-            for _, sessions in self.train_dataloader:
+            for batch_idx, (_, sessions) in enumerate(self.train_dataloader, start=1):
                 if ("Fed" in args.method) and args.mu:
-                    batch_loss = self.trainer.train_batch(
+                    batch_output = self.trainer.train_batch(
                         sessions, self.adj, self.num_items, args,
                         global_params=global_params)
                 else:
-                    batch_loss = self.trainer.train_batch(
+                    batch_output = self.trainer.train_batch(
                         sessions, self.adj, self.num_items, args)
+                if isinstance(batch_output, tuple):
+                    batch_loss, batch_branch_scores = batch_output
+                    if batch_branch_scores:
+                        self._log_branch_scores(
+                            phase="train",
+                            scores=batch_branch_scores,
+                            round_idx=round,
+                            batch_idx=batch_idx,
+                        )
+                else:
+                    batch_loss = batch_output
                 loss += batch_loss
-                step += 1
+                step = batch_idx
 
             gc.collect()
+
+        if getattr(self.trainer, "enable_influence", False):
+            records = self.trainer.consume_train_influence()
+            aggregated = merge_influence_records(records)
+            if aggregated:
+                self.branch_influence_log["train"].append(aggregated)
+                self._log_branch_scores(
+                    phase="train",
+                    scores=aggregated,
+                    round_idx=round,
+                    summary=True,
+                )
 
         logging.info("Epoch {}/{} - client {} -  Training Loss: {:.3f}".format(
             round, args.epochs, self.c_id, loss / step))
@@ -93,16 +117,62 @@ class Client:
         if (self.method == "FedDCSR") or ("VGSAN" in self.method):
             self.trainer.model.graph_convolution(self.adj)
         pred = []
-        for _, sessions in dataloader:
-            predictions = self.trainer.test_batch(sessions)
+        for batch_idx, (_, sessions) in enumerate(dataloader, start=1):
+            batch_output = self.trainer.test_batch(sessions)
+            if isinstance(batch_output, tuple):
+                predictions, batch_branch_scores = batch_output
+                if batch_branch_scores:
+                    self._log_branch_scores(
+                        phase=mode,
+                        scores=batch_branch_scores,
+                        batch_idx=batch_idx,
+                    )
+            else:
+                predictions = batch_output
             pred = pred + predictions
 
         gc.collect()
+        if getattr(self.trainer, "enable_influence", False):
+            records = self.trainer.consume_eval_influence()
+            aggregated = merge_influence_records(records)
+            if aggregated:
+                key = "valid" if mode == "valid" else "test"
+                self.branch_influence_log[key].append(aggregated)
+                self._log_branch_scores(
+                    phase=key,
+                    scores=aggregated,
+                    summary=True,
+                )
         self.MRR, self.NDCG_5, self.NDCG_10, self.HR_1, self.HR_5, self.HR_10 \
             = self.cal_test_score(pred)
         return {"MRR": self.MRR, "HR @1": self.HR_1, "HR @5": self.HR_5,
                 "HR @10":  self.HR_10, "NDCG @5":  self.NDCG_5,
                 "NDCG @10": self.NDCG_10}
+
+
+    def _log_branch_scores(self, phase, scores, round_idx=None, batch_idx=None,
+                           summary=False):
+        """Emit a formatted logging message for branch influence values."""
+        if not scores:
+            return
+        formatted_pairs = ", ".join(
+            f"{key}={value:.4f}" for key, value in sorted(scores.items())
+        )
+        context_parts = [f"client {self.c_id}"]
+        if round_idx is not None:
+            context_parts.append(f"round {round_idx}")
+        if batch_idx is not None:
+            label = "summary" if summary else f"batch {batch_idx}"
+            context_parts.append(label)
+        elif summary:
+            context_parts.append("summary")
+        context = ", ".join(context_parts)
+        logging.info(
+            "[%s] branch influence - %s",
+            phase,
+            formatted_pairs if context == "" else f"{context}: {formatted_pairs}"
+        )
+
 
     def get_old_eval_log(self):
         """Returns the evaluation result of the lastest epoch.
@@ -193,6 +263,12 @@ class Client:
         """
         assert (self.method == "FedDCSR")
         return copy.deepcopy(self.z_s[0].detach())
+
+    def get_branch_influence(self, mode=None):
+        """Return branch influence statistics collected on the client."""
+        if mode is None:
+            return copy.deepcopy(self.branch_influence_log)
+        return copy.deepcopy(self.branch_influence_log.get(mode, []))
 
     def set_global_params(self, global_params):
         """Assign the local shared model parameters with global model

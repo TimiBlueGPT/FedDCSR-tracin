@@ -116,7 +116,7 @@ class DisenVGSAN(nn.Module):
         seq_embeddings = self.dropout(seq_embeddings)
         return seq_embeddings  # (batch_size, seq_len, hidden_size)
 
-    def forward(self, seqs, neg_seqs=None, aug_seqs=None):
+    def forward(self, seqs, neg_seqs=None, aug_seqs=None, return_latent=False):
         # `item_graph_embs` stores the embeddings of all items.
         # Here we need to select the embeddings of items appearing in the
         # sequence
@@ -168,16 +168,8 @@ class DisenVGSAN(nn.Module):
         # else:
         #     reconstructed_seq = self.decoder(z_s + z_e)
 
-        if not self.training:
-            # result = self.linear(z_s)
-            # result_pad = self.linear_pad(z_s)
-            # result = self.linear(z_e)
-            # result_pad = self.linear_pad(z_e)
-            result = self.linear(z_s + z_e)
-            result_pad = self.linear_pad(z_s + z_e)
-        else:
-            result = self.linear(z_s + z_e)
-            result_pad = self.linear_pad(z_s + z_e)
+        result = self.linear(z_s + z_e)
+        result_pad = self.linear_pad(z_s + z_e)
         # reconstructed_seq_exclusive = self.decoder(z_e)
         result_exclusive = self.linear(z_e)
         result_exclusive_pad = self.linear_pad(z_e)
@@ -185,8 +177,11 @@ class DisenVGSAN(nn.Module):
             return torch.cat((result, result_pad), dim=-1), \
                 torch.cat((result_exclusive, result_exclusive_pad), dim=-1), \
                 mu_s, logvar_s, z_s, mu_e, logvar_e, z_e, neg_z_e, aug_z_e
-        else:
-            return torch.cat((result, result_pad), dim=-1)
+        if return_latent:
+            return torch.cat((result, result_pad), dim=-1), \
+                torch.cat((result_exclusive, result_exclusive_pad), dim=-1), \
+                mu_s, logvar_s, z_s, mu_e, logvar_e, z_e
+        return torch.cat((result, result_pad), dim=-1)
 
     def reparameterization(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
