@@ -2,6 +2,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from models.vgsan.disen_vgsan_model import DisenVGSAN
 from models.vgsan import config
 from models.vgsan.vgsan_model import VGSAN
@@ -11,6 +12,7 @@ from models.contrastvae.contrastvae_model import ContrastVAE
 from models.cl4srec.cl4srec_model import CL4SRec
 from models.duorec.duorec_model import DuoRec
 from utils import train_utils
+from utils.influence_utils import compute_branch_influence
 from losses import NCELoss, HingeLoss, JSDLoss, Discriminator, priorKL
 
 
@@ -33,6 +35,11 @@ class ModelTrainer(Trainer):
         self.args = args
         self.method = args.method
         self.device = "cuda:%s" % args.gpu if args.cuda else "cpu"
+        self.enable_influence = False
+        self.branch_param_groups = {}
+        self.influence_cg_damping = float(getattr(args, "influence_cg_damping", 0.0))
+        self.influence_cg_max_iter = int(getattr(args, "influence_cg_max_iter", 50))
+        self.influence_cg_tol = float(getattr(args, "influence_cg_tol", 1e-5))
         if self.method == "FedDCSR":
             self.model = DisenVGSAN(num_items, args).to(self.device)
             # Here we set `self.z_s[:], self.z_g = [None], [None]` so that
@@ -45,6 +52,11 @@ class ModelTrainer(Trainer):
             self.z_s, self.z_g = [None], [None]
             self.discri = Discriminator(
                 config.hidden_size, max_seq_len).to(self.device)
+            self.enable_influence = bool(getattr(args, "enable_influence", False))
+            if self.enable_influence:
+                self.branch_param_groups = self._build_feddcsr_branch_params()
+            else:
+                self.branch_param_groups = {}
         elif "VGSAN" in self.method:
             self.model = VGSAN(num_items, args).to(self.device)
         elif "VSAN" in self.method:
@@ -75,6 +87,8 @@ class ModelTrainer(Trainer):
         self.optimizer = train_utils.get_optimizer(
             args.optimizer, self.params, args.lr)
         self.step = 0
+        self._train_influence_records = []
+        self._eval_influence_records = []
 
     def train_batch(self, sessions, adj, num_items, args, global_params=None):
         """Trains the model for one batch.
@@ -87,7 +101,7 @@ class ModelTrainer(Trainer):
             global_params: Global model parameters used in `FedProx` method.
         """
         self.optimizer.zero_grad()
-
+        branch_scores = None
         if (self.method == "FedDCSR") or ("VGSAN" in self.method):
             self.model.graph_convolution(adj)
 
@@ -110,7 +124,17 @@ class ModelTrainer(Trainer):
                                             ground, self.z_s[0], self.z_g[0],
                                             z_e, neg_z_e, aug_z_e, ground_mask,
                                             num_items, self.step)
-
+            if self.enable_influence:
+                branch_scores = compute_branch_influence(
+                    loss,
+                    self.branch_param_groups,
+                    eval_loss=loss,
+                    cg_damping=self.influence_cg_damping,
+                    cg_max_iter=self.influence_cg_max_iter,
+                    cg_tol=self.influence_cg_tol,
+                    retain_graph=True,
+                )
+                self._train_influence_records.append(branch_scores)
         elif "VGSAN" in self.method:
             seq, ground, ground_mask = sessions
             result, mu, logvar = self.model(seq)
@@ -185,6 +209,8 @@ class ModelTrainer(Trainer):
         loss.backward()
         self.optimizer.step()
         self.step += 1
+        if branch_scores is not None:
+            return loss.item(), branch_scores
         return loss.item()
 
     def disen_vgsan_loss_fn(self, result, result_exclusive, mu_s, logvar_s,
@@ -444,7 +470,31 @@ class ModelTrainer(Trainer):
         # neg_list: (batch_size, num_test_neg)
         seq, ground_truth, neg_list = sessions
         # result: (batch_size, seq_len, num_items)
-        result = self.model(seq)
+        branch_scores = None
+        if self.method == "FedDCSR" and self.enable_influence:
+            self.model.zero_grad()
+            logits, logits_exclusive, mu_s, logvar_s, z_s, mu_e, logvar_e, z_e = \
+                self.model(seq, return_latent=True)
+            candidate_items = torch.cat(
+                (ground_truth.unsqueeze(-1), neg_list), dim=-1)
+            final_scores = logits[:, -1, :]
+            candidate_scores = torch.gather(final_scores, 1, candidate_items)
+            targets = torch.zeros(candidate_scores.size(0), dtype=torch.long,
+                                  device=self.device)
+            eval_loss = F.cross_entropy(candidate_scores, targets)
+            branch_scores = compute_branch_influence(
+                eval_loss,
+                self.branch_param_groups,
+                eval_loss=eval_loss,
+                cg_damping=self.influence_cg_damping,
+                cg_max_iter=self.influence_cg_max_iter,
+                cg_tol=self.influence_cg_tol,
+                retain_graph=False,
+            )
+            self._eval_influence_records.append(branch_scores)
+            result = logits
+        else:
+            result = self.model(seq)
 
         pred = []
         for id in range(len(result)):
@@ -456,5 +506,36 @@ class ModelTrainer(Trainer):
             score_larger = (score[neg_list[id]] > (cur)).data.cpu().numpy()
             true_item_rank = np.sum(score_larger) + 1
             pred.append(true_item_rank)
-
+        if branch_scores is not None:
+            return pred, branch_scores
         return pred
+
+
+    def consume_train_influence(self):
+        """Return and reset accumulated training influence records."""
+        records = self._train_influence_records
+        self._train_influence_records = []
+        return records
+
+    def consume_eval_influence(self):
+        """Return and reset accumulated evaluation influence records."""
+        records = self._eval_influence_records
+        self._eval_influence_records = []
+        return records
+
+    def _build_feddcsr_branch_params(self):
+        """Collect parameter groups for the shared and exclusive branches."""
+        shared_params = []
+        exclusive_params = []
+        shared_modules = [self.model.item_emb_s, self.model.pos_emb_s,
+                          self.model.GNN_encoder_s, self.model.encoder_s]
+        exclusive_modules = [self.model.item_emb_e, self.model.pos_emb_e,
+                             self.model.GNN_encoder_e, self.model.encoder_e]
+        for module in shared_modules:
+            shared_params.extend(list(module.parameters()))
+        for module in exclusive_modules:
+            exclusive_params.extend(list(module.parameters()))
+        return {
+            "shared": tuple(shared_params),
+            "exclusive": tuple(exclusive_params),
+        }
