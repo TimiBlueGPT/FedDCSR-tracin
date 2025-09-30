@@ -72,7 +72,18 @@ def arg_parse():
                         default=5, help="Early stop patience.")
     parser.add_argument("--ld_patience", type=int, default=1,
                         help="Learning rate decay patience.")
-
+    parser.add_argument("--ckpt_interval", type=int, default=5,
+                        help="Interval (in rounds) to snapshot client checkpoints.")
+    parser.add_argument("--disable_influence", action="store_true",
+                        help="Disable influence score computation after training.")
+    parser.add_argument("--influence_train_ratio", type=float, default=0.1,
+                        help="Ratio of training samples used to approximate the Hessian inverse.")
+    parser.add_argument("--hvp_iterations", type=int, default=10,
+                        help="Number of LiSSA iterations when approximating the inverse Hessian-vector product.")
+    parser.add_argument("--hvp_damping", type=float, default=0.01,
+                        help="Damping factor used in LiSSA iterations.")
+    parser.add_argument("--hvp_scale", type=float, default=10.0,
+                        help="Scaling factor used in LiSSA iterations.")
     # KL annealing arguments for variantional method (including ours)
     parser.add_argument("--anneal_cap", type=float, default=1.0, help="KL "
                         "annealing arguments for variantional method "
@@ -134,7 +145,7 @@ def init_logger(args):
 def main():
     args = arg_parse()
     torch.autograd.set_detect_anomaly(True)
-
+    args.compute_influence = not args.disable_influence
     seed_everything(args)
 
     init_logger(args)

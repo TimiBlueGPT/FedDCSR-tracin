@@ -21,6 +21,11 @@ class Client:
         self.method = args.method
         self.checkpoint_dir = args.checkpoint_dir
         self.model_id = args.id if len(args.id) > 1 else "0" + args.id
+        self._method_ckpt_path = os.path.join(
+            self.checkpoint_dir,
+            "domain_" + "".join([domain[0] for domain in args.domains]),
+            self.method + "_" + self.model_id)
+        ensure_dir(self._method_ckpt_path, verbose=True)
         if args.method == "FedDCSR":
             self.z_s = self.trainer.z_s
             self.z_g = self.trainer.z_g
@@ -226,15 +231,9 @@ class Client:
         self.z_g[0] = copy.deepcopy(global_rep)
 
     def save_params(self):
-        method_ckpt_path = os.path.join(self.checkpoint_dir,
-                                        "domain_" +
-                                        "".join([domain[0]
-                                                for domain
-                                                 in self.args.domains]),
-                                        self.method + "_" + self.model_id)
-        ensure_dir(method_ckpt_path, verbose=True)
+
         ckpt_filename = os.path.join(
-            method_ckpt_path, "client%d.pt" % self.c_id)
+            self._method_ckpt_path, "client%d.pt" % self.c_id)
         params = self.trainer.model.state_dict()
         try:
             torch.save(params, ckpt_filename)
@@ -243,12 +242,8 @@ class Client:
             print("[ Warning: Saving failed... continuing anyway. ]")
 
     def load_params(self):
-        ckpt_filename = os.path.join(self.checkpoint_dir,
-                                     "domain_" +
-                                     "".join([domain[0]
-                                             for domain in self.args.domains]),
-                                     self.method + "_" + self.model_id,
-                                     "client%d.pt" % self.c_id)
+        ckpt_filename = os.path.join(
+            self._method_ckpt_path, "client%d.pt" % self.c_id)
         try:
             checkpoint = torch.load(ckpt_filename)
         except IOError:
@@ -256,3 +251,35 @@ class Client:
             exit(1)
         if self.trainer.model is not None:
             self.trainer.model.load_state_dict(checkpoint)
+
+    def get_round_checkpoint_dir(self, round_idx):
+        return os.path.join(self._method_ckpt_path,
+                            "round_{:03d}".format(round_idx))
+
+    def save_round_checkpoint(self, round_idx):
+        round_dir = self.get_round_checkpoint_dir(round_idx)
+        ensure_dir(round_dir, verbose=False)
+        ckpt_filename = os.path.join(round_dir, "client%d.pt" % self.c_id)
+        params = self.trainer.model.state_dict()
+        try:
+            torch.save(params, ckpt_filename)
+            logging.info("Saved round %d checkpoint for client %d to %s",
+                         round_idx, self.c_id, ckpt_filename)
+        except IOError:
+            logging.warning("[ Warning: Saving checkpoint for client %d in round %d failed. Continuing anyway. ]",
+                            self.c_id, round_idx)
+
+    def load_params_from_path(self, ckpt_path):
+        try:
+            checkpoint = torch.load(ckpt_path,
+                                    map_location=self.trainer.device)
+        except IOError:
+            logging.warning("[ Warning: Cannot load model from %s. Skipping. ]",
+                            ckpt_path)
+            return False
+        if self.trainer.model is not None:
+            self.trainer.model.load_state_dict(checkpoint)
+        return True
+
+    def get_method_checkpoint_path(self):
+        return self._method_ckpt_path
