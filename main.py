@@ -39,7 +39,7 @@ def arg_parse():
                         default="log", help="directory of logs")
     parser.add_argument("--cuda", type=bool, default=torch.cuda.is_available())
     parser.add_argument("--gpu", type=str, default="0", help="GPU ID to use")
-    parser.add_argument("--epochs", type=int, default=40,
+    parser.add_argument("--epochs", type=int, default=60,
                         help="Number of total training iterations.")
     parser.add_argument("--local_epoch", type=int, default=3,
                         help="Number of local training epochs.")

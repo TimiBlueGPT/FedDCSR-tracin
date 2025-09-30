@@ -111,6 +111,7 @@ class ModelTrainer(Trainer):
                                             z_e, neg_z_e, aug_z_e, ground_mask,
                                             num_items, self.step)
 
+
         elif "VGSAN" in self.method:
             seq, ground, ground_mask = sessions
             result, mu, logvar = self.model(seq)

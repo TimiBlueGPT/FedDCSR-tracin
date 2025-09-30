@@ -56,7 +56,7 @@ class DisenVGSAN(nn.Module):
 
         self.encoder_s = Encoder(num_items, args)
         self.encoder_e = Encoder(num_items, args)
-        self.decoder = Decoder(num_items, args)
+        #self.decoder = Decoder(num_items, args)
 
         # The last prediction layer cannot be shared between clients, because
         # the number of items in each domain is different.

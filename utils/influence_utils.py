@@ -125,8 +125,9 @@ def _compute_validation_gradients(client, params, args, seed_offset):
             ground, z_s, trainer.z_g[0] if hasattr(trainer, "z_g") else None,
             z_e, neg_z_e, aug_z_e, ground_mask, client.num_items, trainer.step)
 
+
         batch_grads = torch.autograd.grad(
-            loss, params, allow_unused=True, retain_graph=False)
+            loss, params, allow_unused=True, retain_graph=True,create_graph=True)
         batch_grads = _grad_or_zeros(batch_grads, params)
         grads = [g_acc + g_curr.detach() for g_acc, g_curr in zip(grads, batch_grads)]
         num_batches += 1
@@ -186,7 +187,7 @@ def _approx_inverse_hvp(train_grads, params, vector_list, args):
 
     def hvp_fn(vec):
         hv = torch.autograd.grad(
-            train_grads, params, grad_outputs=vec, retain_graph=True,
+            train_grads, params, grad_outputs=vec,create_graph=True, retain_graph=True,
             allow_unused=True)
         return _grad_or_zeros(hv, params)
 

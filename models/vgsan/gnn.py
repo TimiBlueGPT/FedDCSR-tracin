@@ -79,12 +79,13 @@ class GraphConvolution(Module):
         return nn.Parameter(initial / 2)
 
     def forward(self, input, adj):
-        support = input
+        # (N, in_features) @ (in_features, out_features) → (N, out_features)
+        support = torch.matmul(input, self.weight)
+        # 稀疏邻接乘扩散 (N, out_features)
         output = torch.spmm(adj, support)
         if self.bias is not None:
-            return output + self.bias
-        else:
-            return output
+            output = output + self.bias
+        return output
 
     def __repr__(self):
         return self.__class__.__name__ + " (" \
