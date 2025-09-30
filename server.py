@@ -39,7 +39,7 @@ class Server(object):
         self.latest_progress_direction = None
         self.latest_client_scores = {}
         self.client_attributor = ClientAttributor()
-        self.score_temperature = getattr(args, "score_temperature", 1500.0)
+        self.score_temperature = getattr(args, "score_temperature", 1e9)
         if args.method == "FedDCSR":
             self.global_reps = None
         
@@ -48,15 +48,7 @@ class Server(object):
 
 
     def aggregate_params(self, clients, random_cids):
-        """Sums up parameters of models shared by all active clients at each
-        epoch.
 
-        Args:
-            clients: A list of clients instances.
-            random_cids: Randomly selected client ID in each training round.
-        """
-        # Record the model parameter aggregation results of each branch
-        # separately
         prev_global_params = self._clone_param_list(self.global_params)
         num_branchs = len(self.global_params)
         new_global_params = [None] * num_branchs
@@ -218,4 +210,4 @@ class Server(object):
             self.client_attributor.add_score(c_id, score)
 
         self.latest_client_scores = ClientAttributor._softmax(
-            round_scores, self.score_temperature)
+            self.client_attributor.scores, self.score_temperature)
