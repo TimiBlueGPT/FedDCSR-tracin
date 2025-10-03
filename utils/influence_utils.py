@@ -105,13 +105,13 @@ def _compute_validation_gradients(client, params, args, seed_offset):
     model = trainer.model
     device = trainer.device
     model.train()
-    if (client.method == "FedDCSR") or ("VGSAN" in client.method):
-        model.graph_convolution(client.adj)
 
     grads = _zeros_like_params(params)
     num_batches = 0
 
     for batch_idx, (_, sessions) in enumerate(client.valid_dataloader):
+        if (client.method == "FedDCSR") or ("VGSAN" in client.method):
+            model.graph_convolution(client.adj)
         prepared_sessions = _prepare_validation_batch_for_disen(
             sessions, client.num_items, seed_offset + batch_idx)
         tensor_sessions = [torch.LongTensor(x).to(device)
@@ -125,9 +125,8 @@ def _compute_validation_gradients(client, params, args, seed_offset):
             ground, z_s, trainer.z_g[0] if hasattr(trainer, "z_g") else None,
             z_e, neg_z_e, aug_z_e, ground_mask, client.num_items, trainer.step)
 
-
         batch_grads = torch.autograd.grad(
-            loss, params, allow_unused=True, retain_graph=True,create_graph=True)
+            loss, params, allow_unused=True, retain_graph=False)
         batch_grads = _grad_or_zeros(batch_grads, params)
         grads = [g_acc + g_curr.detach() for g_acc, g_curr in zip(grads, batch_grads)]
         num_batches += 1
@@ -152,6 +151,7 @@ def _compute_train_loss_and_grads(client, params, args):
     batch_size = client.train_dataloader.batch_size
     max_batches = min(client.train_dataloader.num_batch,
                       math.ceil(target_samples / batch_size))
+    print(max_batches)
 
     losses = []
     for batch_idx, (_, sessions) in enumerate(client.train_dataloader):
@@ -164,6 +164,16 @@ def _compute_train_loss_and_grads(client, params, args):
             result, result_exclusive, mu_s, logvar_s, mu_e, logvar_e,
             ground, z_s, trainer.z_g[0] if hasattr(trainer, "z_g") else None,
             z_e, neg_z_e, aug_z_e, ground_mask, client.num_items, trainer.step)
+        """named = [(n,p) for n,p in model.named_parameters() if p.requires_grad]
+        for i,(n,p) in enumerate(named):
+            print(i, n, p.shape)
+        
+        g = torch.autograd.grad(loss, [p for _,p in named],
+                                allow_unused=True, create_graph=True, retain_graph=True)
+        for i,((n,p),gi) in enumerate(zip(named, g)):
+            if gi is None:
+                print(f"[unused] idx={i} name={n} shape={p.shape} has NO grad")"""
+                
         losses.append(loss)
         if batch_idx + 1 >= max_batches:
             break
@@ -185,25 +195,66 @@ def _approx_inverse_hvp(train_grads, params, vector_list, args):
     scale = args.hvp_scale if args.hvp_scale != 0 else 1.0
     num_iter = max(1, args.hvp_iterations)
 
+    active_indices = []
+    active_train_grads = []
+    active_params = []
+    for idx, (grad, param) in enumerate(zip(train_grads, params)):
+        if grad is None:
+            continue
+        if grad.grad_fn is None:
+            continue
+        active_indices.append(idx)
+        active_train_grads.append(grad)
+        active_params.append(param)
+
+    if not active_indices:
+        return [v.clone().detach() for v in vector_list]
+
     def hvp_fn(vec):
         hv = torch.autograd.grad(
-            train_grads, params, grad_outputs=vec,create_graph=True, retain_graph=True,
-            allow_unused=True)
-        return _grad_or_zeros(hv, params)
+            active_train_grads, active_params, grad_outputs=vec,
+            retain_graph=True, allow_unused=True)
+        return _grad_or_zeros(hv, active_params)
 
     estimate = [v.clone().detach() for v in vector_list]
     for _ in range(num_iter):
-        hv = hvp_fn(estimate)
-        estimate = [v + (1 - damping) * est - hv_i / scale
-                    for v, est, hv_i in zip(vector_list, estimate, hv)]
+        vec_active = [estimate[idx] for idx in active_indices]
+        hv_active = hvp_fn(vec_active)
+        for position, hv_i in zip(active_indices, hv_active):
+            vector_component = vector_list[position]
+            estimate[position] = (vector_component
+                                  + (1 - damping) * estimate[position]
+                                  - hv_i / scale)
     return [est.detach() for est in estimate]
 
 
-def _branch_dot_product(grad_list, indices):
+def _select_branch_segment(indices, tail_ratio):
     if not indices:
-        return 0.0
-    grad_vector = torch.cat([grad_list[idx].reshape(-1) for idx in indices])
-    return grad_vector
+        return []
+    tail_ratio = max(0.0, min(1.0, tail_ratio))
+    if tail_ratio <= 0.0:
+        return []
+    if tail_ratio >= 1.0:
+        return indices
+    count = max(1, int(math.ceil(len(indices) * tail_ratio)))
+    print(count)
+    start = max(0, len(indices) - count)
+    print(start)
+    return indices[start:]
+
+
+def _branch_inner_product(grad_list_a, grad_list_b, indices):
+    if not indices:
+        return None
+    total = None
+    for idx in indices:
+        grad_a = grad_list_a[idx]
+        grad_b = grad_list_b[idx]
+        if grad_a.numel() == 0 or grad_b.numel() == 0:
+            continue
+        prod = (grad_a.reshape(-1) * grad_b.reshape(-1)).sum()
+        total = prod if total is None else total + prod
+    return total
 
 
 def compute_influence_for_clients(clients, args):
@@ -214,6 +265,8 @@ def compute_influence_for_clients(clients, args):
     logging.info("Computing influence scores across checkpoints...")
     influence_results = defaultdict(dict)
 
+    tail_ratio = getattr(args, "influence_branch_tail_ratio", 1.0)
+
     for client in clients:
         base_dir = client.get_method_checkpoint_path()
         if not os.path.exists(base_dir):
@@ -222,6 +275,7 @@ def compute_influence_for_clients(clients, args):
             continue
         round_dirs = [d for d in os.listdir(base_dir)
                       if d.startswith("round_")]
+        
         if not round_dirs:
             logging.warning("No round checkpoints found for client %d in %s.",
                             client.c_id, base_dir)
@@ -267,17 +321,17 @@ def compute_influence_for_clients(clients, args):
 
             branch_scores = {}
             for branch_name, indices in branch_indices.items():
-                if not indices:
+                selected_indices = _select_branch_segment(indices, tail_ratio)
+                if not selected_indices:
                     continue
-                branch_train = _branch_dot_product(train_grads_detached, indices)
-                branch_inv_hvp = _branch_dot_product(inv_hvp, indices)
-                if branch_train.numel() == 0 or branch_inv_hvp.numel() == 0:
+                branch_dot = _branch_inner_product(
+                    train_grads_detached, inv_hvp, selected_indices)
+                if branch_dot is None:
                     continue
-                score = float(-(branch_train * branch_inv_hvp).sum().item())
-                branch_scores[branch_name] = score
+                branch_scores[branch_name] = float((-branch_dot).item())
 
             influence_results[round_dir]["client_%d" % client.c_id] = branch_scores
-
+            print(influence_results)
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 

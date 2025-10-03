@@ -4,6 +4,7 @@ from tqdm import tqdm
 from utils.train_utils import EarlyStopping, LRDecay
 import numpy as np
 from utils.influence_utils import compute_influence_for_clients
+import time
 
 def evaluation_logging(eval_logs, round, weights, mode="valid"):
     if mode == "valid":
@@ -104,7 +105,7 @@ def run_fl(clients, server, args):
                 # Learning rate decay. Here only compare the current results
                 # with the latest results
                 lr_decay(round, avg_eval_log, clients)
-
+        
         load_and_eval_model(n_clients, clients, args)
         if args.method == "FedDCSR" and args.compute_influence:
             compute_influence_for_clients(clients, args)
