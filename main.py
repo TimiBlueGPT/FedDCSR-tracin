@@ -29,8 +29,8 @@ def arg_parse():
                         default=16, help="maxisum sequence length")
 
     # Training part
-    parser.add_argument("--method", type=str, default="FedDCSR",
-                        help="method, possible are `FedDCSR`(ours), "
+    parser.add_argument("--method", type=str, default="VeriFRL",
+                        help="method, possible are `VeriFRL`(ours), "
                         "`FedVGSAN`, `LocalVGSAN`, `FedSASRec`, "
                         "`LocalSASRec`, `FedVSAN`, `LocalVSAN`, "
                         "`FedContrastVAE`, `LocalContrastVAE`, `FedCL4SRec`, "
@@ -55,7 +55,7 @@ def arg_parse():
     parser.add_argument("--decay_epoch", type=int, default=10,
                         help="Decay learning rate after this epoch.")
     parser.add_argument("--batch_size", type=int,
-                        default=128, help="Training batch size.")
+                        default=512, help="Training batch size.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval_interval", type=int,
                         default=1, help="Interval of evalution")
@@ -87,7 +87,7 @@ def arg_parse():
     parser.add_argument("--sim", type=str, default="dot")
 
     args = parser.parse_args()
-    assert (args.method in ["FedDCSR", "FedVGSAN", "LocalVGSAN", "FedSASRec",
+    assert (args.method in ["VeriFRL", "FedVGSAN", "LocalVGSAN", "FedSASRec",
                             "LocalSASRec", "FedVSAN", "LocalVSAN",
                             "FedContrastVAE", "LocalContrastVAE", "FedCL4SRec",
                             "LocalCL4SRec", "FedDuoRec", "LocalDuoRec"])

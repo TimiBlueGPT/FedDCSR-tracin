@@ -21,7 +21,7 @@ class Client:
         self.method = args.method
         self.checkpoint_dir = args.checkpoint_dir
         self.model_id = args.id if len(args.id) > 1 else "0" + args.id
-        if args.method == "FedDCSR":
+        if args.method == "VeriFRL":
             self.z_s = self.trainer.z_s
             self.z_g = self.trainer.z_g
         self.c_id = c_id
@@ -87,7 +87,7 @@ class Client:
 
     def _get_shared_modules(self):
         modules = []
-        if self.method == "FedDCSR":
+        if self.method == "VeriFRL":
             modules.append(self.model.encoder_s)
         elif "VGSAN" in self.method:
             modules.append(self.model.encoder)
@@ -169,7 +169,7 @@ class Client:
         if lr is None or lr == 0:
             return None
         saved_z_s = None
-        if self.method == "FedDCSR" and self.z_s[0] is not None:
+        if self.method == "VeriFRL" and self.z_s[0] is not None:
             saved_z_s = copy.deepcopy(self.z_s[0].detach().clone())
         prev_training_mode = self.trainer.model.training
         self.trainer.model.load_state_dict(self._pre_train_state)
@@ -207,7 +207,7 @@ class Client:
             dataloader = self.test_dataloader
 
         self.trainer.model.eval()
-        if (self.method == "FedDCSR") or ("VGSAN" in self.method):
+        if (self.method == "VeriFRL") or ("VGSAN" in self.method):
             self.trainer.model.graph_convolution(self.adj)
         pred = []
         for _, sessions in dataloader:
@@ -287,7 +287,7 @@ class Client:
     def get_params(self):
         """Returns the model parameters that need to be shared between clients.
         """
-        if self.method == "FedDCSR":
+        if self.method == "VeriFRL":
             return copy.deepcopy([self.model.encoder_s.state_dict()])
         elif "VGSAN" in self.method:
             return copy.deepcopy([self.model.encoder.state_dict()])
@@ -308,17 +308,17 @@ class Client:
         """Returns the user sequence representations that need to be shared
         between clients.
         """
-        assert (self.method == "FedDCSR")
+        assert (self.method == "VeriFRL")
         return copy.deepcopy(self.z_s[0].detach())
 
     def set_global_params(self, global_params):
         """Assign the local shared model parameters with global model
         parameters.
         """
-        assert (self.method in ["FedDCSR", "FedVGSAN", "FedSASRec", "FedVSAN",
+        assert (self.method in ["VeriFRL", "FedVGSAN", "FedSASRec", "FedVSAN",
                                 "FedContrastVAE", "FedCL4SRec", "FedDuoRec"])
         self.init_global_params = copy.deepcopy(global_params)
-        if self.method == "FedDCSR":
+        if self.method == "VeriFRL":
             self.model.encoder_s.load_state_dict(global_params[0])
         elif self.method == "FedVGSAN":
             self.model.encoder.load_state_dict(global_params[0])
@@ -339,7 +339,7 @@ class Client:
     def set_global_reps(self, global_rep):
         """Copy global user sequence representations to local.
         """
-        assert (self.method == "FedDCSR")
+        assert (self.method == "VeriFRL")
         self.z_g[0] = copy.deepcopy(global_rep)
 
     def save_params(self):

@@ -62,7 +62,7 @@ def run_fl(clients, server, args):
                 if "Fed" in args.method:
                     # Restore global parameters to client's model
                     clients[c_id].set_global_params(server.get_global_params())
-                    if args.method == "FedDCSR":
+                    if args.method == "VeriFRL":
                         clients[c_id].set_global_reps(server.get_global_reps())
 
                 # Train one client
@@ -76,7 +76,7 @@ def run_fl(clients, server, args):
             print(f"Normalized TracIn scores: {topk_scores}")
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
-                if args.method == "FedDCSR":
+                if args.method == "VeriFRL":
                     server.aggregate_reps(clients, random_cids)
 
             if round % args.eval_interval == 0:

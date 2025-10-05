@@ -11,7 +11,7 @@ def load_dataset(args):
     client_test_datasets = []
     client_tracin_datasets=[]
     for domain in args.domains:
-        if args.method == "FedDCSR":
+        if args.method == "VeriFRL":
             model = "DisenVGSAN"
         else:
             model = args.method.replace("Fed", "")

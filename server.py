@@ -30,7 +30,7 @@ class Server(object):
         self.args = args
         self.global_params = init_global_params
         self.attributor = ClientAttributor()
-        if args.method == "FedDCSR":
+        if args.method == "VeriFRL":
             self.global_reps = None
         
 
