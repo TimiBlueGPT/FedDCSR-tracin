@@ -17,7 +17,6 @@ from fl import run_fl
 def arg_parse():
     parser = argparse.ArgumentParser()
 
-    # Dataset part
     parser.add_argument(dest="domains", metavar="domains", nargs="*",
                         help="`Food Kitchen Clothing Beauty` or "
                         "`Movies Books Games` or `Sports Garden Home`")
@@ -28,7 +27,6 @@ def arg_parse():
     parser.add_argument("--max_seq_len", type=int,
                         default=16, help="maxisum sequence length")
 
-    # Training part
     parser.add_argument("--method", type=str, default="VeriFRL",
                         help="method, possible are `VeriFRL`(ours), "
                         "`FedVGSAN`, `LocalVGSAN`, `FedSASRec`, "
@@ -47,7 +45,7 @@ def arg_parse():
                                                 "adamax"], default="adam",
                         help="Optimizer: sgd, adagrad, adam or adamax.")
     parser.add_argument("--lr", type=float, default=0.001,
-                        help="Applies to sgd and adagrad.")  # 0.001
+                        help="Applies to sgd and adagrad.")
     parser.add_argument("--lr_decay", type=float, default=1,
                         help="Learning rate decay rate.")
     parser.add_argument("--weight_decay", type=float, default=5e-4,
@@ -55,7 +53,7 @@ def arg_parse():
     parser.add_argument("--decay_epoch", type=int, default=10,
                         help="Decay learning rate after this epoch.")
     parser.add_argument("--batch_size", type=int,
-                        default=512, help="Training batch size.")
+                        default=128, help="Training batch size.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval_interval", type=int,
                         default=1, help="Interval of evalution")
@@ -73,14 +71,12 @@ def arg_parse():
     parser.add_argument("--ld_patience", type=int, default=1,
                         help="Learning rate decay patience.")
 
-    # KL annealing arguments for variantional method (including ours)
     parser.add_argument("--anneal_cap", type=float, default=1.0, help="KL "
                         "annealing arguments for variantional method "
                         "(including ours). 1.0 for FKCB is the best, 0.01 for "
                         "MBG and SGH is the best")
     parser.add_argument("--total_annealing_step", type=int, default=10000)
 
-    # Contrastive arguments for contrastive method (including ours)
     parser.add_argument("--temperature", type=float, default=1.0,
                         help="Contrastive arguments for contrastive method "
                         "(including ours)")
@@ -106,8 +102,6 @@ def seed_everything(args):
 
 
 def init_logger(args):
-    """Init a file logger that opens the file periodically and write to it.
-    """
     log_path = os.path.join(args.log_dir,
                             "domain_" + "".join([domain[0] for domain
                                                  in args.domains]))
@@ -145,10 +139,8 @@ def main():
     clients = [Client(ModelTrainer, c_id, args, adjs[c_id],
                       train_datasets[c_id], valid_datasets[c_id],
                       test_datasets[c_id],tracin_dataset[c_id]) for c_id in range(n_clients)]
-    # Initialize the aggretation weight
     init_clients_weight(clients)
 
-    # Save the config of input arguments
     save_config(args)
 
     server = Server(args, clients[0].get_params())

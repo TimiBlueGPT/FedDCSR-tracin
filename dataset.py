@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-"""Customized dataset.
-"""
 import math
 import random
 import os
@@ -12,12 +10,8 @@ from torch.utils.data import Dataset
 
 
 class SeqDataset(Dataset):
-    """A customized dataset reading and preprocessing data of a certain domain
-    from ".txt" files.
-    """
     data_dir = "data"
     prep_dir = "prep_data"
-    # The number of negative samples to test all methods (including ours)
     num_test_neg = 999
 
     def __init__(self, domain, model="SAN", mode="train", max_seq_len=16,
@@ -48,9 +42,7 @@ class SeqDataset(Dataset):
             for line in infile.readlines():
                 session = []
                 line = line.strip().split("\t")
-                # Note that the ground truth is included when computing the
-                # sequence lengths of domain A and domain B
-                for item in line[1:]:  # Start from index 1 to exclude user ID
+                for item in line[1:]:
                     item = int(item)
                     session.append(item)
                 user_ids.append(int(line[0]))
@@ -88,7 +80,7 @@ class SeqDataset(Dataset):
         return prep_sessions
 
     @ staticmethod
-    def random_neg(left, right, excl):  # [left, right)
+    def random_neg(left, right, excl):
         sample = np.random.randint(left, right)
         while sample in excl:
             sample = np.random.randint(left, right)
@@ -96,13 +88,11 @@ class SeqDataset(Dataset):
 
     def preprocess_disen_vgsan(self, data, mode="train"):
         prep_sessions = []
-        for session in data:  # The pad is needed
+        for session in data:
             temp = []
             if mode == "train":
                 items_input = session[:-1]
                 ground_truths = session[1:]
-                # Here `js_neg_seqs` is used for computing similarity loss,
-                # `contrast_aug_seqs` is used for computing contrastive infomax loss
                 js_neg_seq = copy.deepcopy(items_input)
                 contrast_aug_seq = copy.deepcopy(items_input)
                 random.shuffle(contrast_aug_seq)
@@ -129,8 +119,6 @@ class SeqDataset(Dataset):
                 temp.append(ground_truth)
                 neg_samples = []
                 for _ in range(self.num_test_neg):
-                    # Negative samples must be generated in the corresponding
-                    # domain
                     neg_sample = self.random_neg(
                         0, self.num_items, excl=[ground_truth])
                     neg_samples.append(neg_sample)
@@ -141,7 +129,7 @@ class SeqDataset(Dataset):
 
     def preprocess_vgsan(self, data, mode="train"):
         prep_sessions = []
-        for session in data:  # The pad is needed
+        for session in data:
             temp = []
             if mode == "train":
                 items_input = session[:-1]
@@ -162,8 +150,6 @@ class SeqDataset(Dataset):
                 temp.append(ground_truth)
                 neg_samples = []
                 for _ in range(self.num_test_neg):
-                    # Negative samples must be generated in the corresponding
-                    # domain
                     neg_sample = self.random_neg(
                         0, self.num_items, excl=[ground_truth])
                     neg_samples.append(neg_sample)
@@ -174,7 +160,7 @@ class SeqDataset(Dataset):
 
     def preprocess_sasrec(self, data, mode="train"):
         prep_sessions = []
-        for session in data:  # The pad is needed
+        for session in data:
             temp = []
             if mode == "train":
                 items_input = session[:-1]
@@ -196,8 +182,6 @@ class SeqDataset(Dataset):
                 temp.append(ground_truth)
                 neg_samples = []
                 for _ in range(self.num_test_neg):
-                    # Negative samples must be generated in the corresponding
-                    # domain
                     neg_sample = self.random_neg(
                         0, self.num_items, excl=[ground_truth])
                     neg_samples.append(neg_sample)
@@ -208,7 +192,7 @@ class SeqDataset(Dataset):
 
     def preprocess_contrastvae(self, data, mode="train"):
         prep_sessions = []
-        for session in data:  # The pad is needed
+        for session in data:
             temp = []
             if mode == "train":
                 items_input = session[:-1]
@@ -239,8 +223,6 @@ class SeqDataset(Dataset):
                 temp.append(ground_truth)
                 neg_samples = []
                 for _ in range(self.num_test_neg):
-                    # Negative samples must be generated in the corresponding
-                    # domain
                     neg_sample = self.random_neg(
                         0, self.num_items, excl=[ground_truth])
                     neg_samples.append(neg_sample)
@@ -251,7 +233,7 @@ class SeqDataset(Dataset):
 
     def preprocess_cl4srec(self, data, mode="train"):
         prep_sessions = []
-        for session in data:  # The pad is needed
+        for session in data:
             temp = []
             if mode == "train":
                 items_input = session[:-1]
@@ -292,8 +274,6 @@ class SeqDataset(Dataset):
                 temp.append(ground_truth)
                 neg_samples = []
                 for _ in range(self.num_test_neg):
-                    # Negative samples must be generated in the corresponding
-                    # domain
                     neg_sample = self.random_neg(
                         0, self.num_items, excl=[ground_truth])
                     neg_samples.append(neg_sample)
@@ -311,7 +291,7 @@ class SeqDataset(Dataset):
                 last_item_to_seq[last_item].append(items_input)
 
         prep_sessions = []
-        for session in data:  # The pad is needed
+        for session in data:
             temp = []
             if mode == "train":
                 items_input = session[:-1]
@@ -343,8 +323,6 @@ class SeqDataset(Dataset):
                 temp.append(ground_truth)
                 neg_samples = []
                 for _ in range(self.num_test_neg):
-                    # Negative samples must be generated in the corresponding
-                    # domain
                     neg_sample = self.random_neg(
                         0, self.num_items, excl=[ground_truth])
                     neg_samples.append(neg_sample)
@@ -370,7 +348,6 @@ class SeqDataset(Dataset):
         mask_index = random.sample(range(item_seq_len), k=num_mask)
         masked_item_seq = copy.deepcopy(item_seq)
         masked_item_seq = np.array(masked_item_seq)
-        # Token [num_items] has been used for semantic masking
         masked_item_seq[mask_index] = self.num_items
         return masked_item_seq.tolist()
 
@@ -395,14 +372,10 @@ class SeqDataset(Dataset):
         return user_ids, session
 
     def __setitem__(self, idx, value):
-        """To support shuffle operation.
-        """
         self.user_ids[idx] = value[0]
         self.prep_sessions[idx] = value[1]
 
     def __add__(self, other):
-        """To support concatenation operation.
-        """
         user_ids, prep_sessions = other
         self.user_ids += user_ids
         self.prep_sessions += prep_sessions

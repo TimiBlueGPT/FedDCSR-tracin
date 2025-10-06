@@ -11,10 +11,8 @@ from utils.io_utils import ensure_dir
 
 class Client:
     def __init__(self, model_fn, c_id, args, adj, train_dataset, valid_dataset, test_dataset,tracin_dataset):
-        # Used for computing the mask in self-attention module
         self.num_items = train_dataset.num_items
         self.domain = train_dataset.domain
-        # Used for computing the positional embeddings
         self.max_seq_len = args.max_seq_len
         self.trainer = model_fn(args, self.num_items, self.max_seq_len)
         self.model = self.trainer.model
@@ -38,13 +36,11 @@ class Client:
             train_dataset, batch_size=args.batch_size, shuffle=False
         )
 
-        # Compute the number of samples for each client
+
         self.n_samples_train = len(train_dataset)
         self.n_samples_valid = len(valid_dataset)
         self.n_samples_test = len(test_dataset)
-        # The aggretation weight
         self.train_pop, self.valid_weight, self.test_weight = 0.0, 0.0, 0.0
-        # Model evaluation results
         self.MRR, self.NDCG_5, self.NDCG_10, self.HR_1, self.HR_5, self.HR_10 \
             = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
         self.init_global_params = copy.deepcopy(self.get_params())
@@ -53,13 +49,6 @@ class Client:
         self._cached_eval_batch = None
 
     def train_epoch(self, round, args, global_params=None):
-        """Trains one client with its own training data for one epoch.
-
-        Args:
-            round: Training round.
-            args: Other arguments for training.
-            global_params: Global model parameters used in `FedProx` method.
-        """
         self.trainer.model.train()
         self._pre_train_state = copy.deepcopy(self.trainer.model.state_dict())
         for _ in range(args.local_epoch):
@@ -104,9 +93,6 @@ class Client:
         return modules
 
     def _gather_shared_param_deltas_vector(self):
-        """
-        计算模型参数的变化量，并且将其展平
-        """
         modules = self._get_shared_modules()
         if not modules or self.init_global_params is None:
             return None
@@ -196,11 +182,6 @@ class Client:
         return torch.dot(g_c_vector, grad_vector).item()
 
     def evaluation(self, mode="valid"):
-        """Evaluates one client with its own valid/test data for one epoch.
-
-        Args:
-            mode: `valid` or `test`.
-        """
         if mode == "valid":
             dataloader = self.valid_dataloader
         elif mode == "test":
@@ -222,8 +203,6 @@ class Client:
                 "NDCG @10": self.NDCG_10}
 
     def get_old_eval_log(self):
-        """Returns the evaluation result of the lastest epoch.
-        """
         return {"MRR": self.MRR, "HR @1": self.HR_1, "HR @5": self.HR_5,
                 "HR @10":  self.HR_10, "NDCG @5":  self.NDCG_5,
                 "NDCG @10": self.NDCG_10}
@@ -237,8 +216,6 @@ class Client:
         NDCG_5 = 0.0
         NDCG_10 = 0.0
         valid_entity = 0.0
-        # `pred` indicates the rank of groundtruth items in the recommendation
-        # list
         for pred in predictions:
             valid_entity += 1
             MRR += 1 / pred
@@ -256,13 +233,6 @@ class Client:
 
 
     def get_grads(self):
-        """Returns gradients of the shared model parameters.
-
-        Gradients are computed as the difference between the current model
-        parameters and the global parameters that were used to initialise this
-        client's model at the beginning of the round (stored in
-        ``self.init_global_params``).
-        """
         assert hasattr(self, "init_global_params"), \
             "`init_global_params` missing. Did you forget to call `set_global_params`?"
         current_params = self.get_params()
@@ -285,8 +255,6 @@ class Client:
         return grads
 
     def get_params(self):
-        """Returns the model parameters that need to be shared between clients.
-        """
         if self.method == "VeriFRL":
             return copy.deepcopy([self.model.encoder_s.state_dict()])
         elif "VGSAN" in self.method:
@@ -305,16 +273,10 @@ class Client:
             return copy.deepcopy([self.model.encoder.state_dict()])
 
     def get_reps_shared(self):
-        """Returns the user sequence representations that need to be shared
-        between clients.
-        """
         assert (self.method == "VeriFRL")
         return copy.deepcopy(self.z_s[0].detach())
 
     def set_global_params(self, global_params):
-        """Assign the local shared model parameters with global model
-        parameters.
-        """
         assert (self.method in ["VeriFRL", "FedVGSAN", "FedSASRec", "FedVSAN",
                                 "FedContrastVAE", "FedCL4SRec", "FedDuoRec"])
         self.init_global_params = copy.deepcopy(global_params)
@@ -322,7 +284,6 @@ class Client:
             self.model.encoder_s.load_state_dict(global_params[0])
         elif self.method == "FedVGSAN":
             self.model.encoder.load_state_dict(global_params[0])
-            # self.model.decoder.load_state_dict(global_params[1])
         elif self.method == "FedSASRec":
             self.model.encoder.load_state_dict(global_params[0])
         elif self.method == "FedVSAN":
@@ -337,8 +298,6 @@ class Client:
             self.model.encoder.load_state_dict(global_params[0])
 
     def set_global_reps(self, global_rep):
-        """Copy global user sequence representations to local.
-        """
         assert (self.method == "VeriFRL")
         self.z_g[0] = copy.deepcopy(global_rep)
 

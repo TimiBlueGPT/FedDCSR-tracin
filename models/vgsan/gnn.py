@@ -10,8 +10,6 @@ from . import config
 
 
 class GCNLayer(nn.Module):
-    """GCN Module layer.
-    """
 
     def __init__(self, args):
         super(GCNLayer, self).__init__()
@@ -59,7 +57,6 @@ class GraphConvolution(Module):
         self.out_features = out_features
         self.weight = nn.Parameter(
             torch.FloatTensor(in_features, out_features))
-        # self.weight = self.glorot_init(in_features, out_features)
         if bias:
             self.bias = nn.Parameter(torch.FloatTensor(out_features))
         else:

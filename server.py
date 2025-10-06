@@ -7,23 +7,29 @@ from collections import defaultdict
 
 class ClientAttributor:
     def __init__(self):
-        self.scores = defaultdict(float)  # cid -> score
+        self.scores = defaultdict(float)
 
     def add_score(self, cid, score: float):
         self.scores[cid] += float(score)
 
-    def dump_topk(self, k=20):
-        if not self.scores:
-            return []
-        min_score = min(self.scores.values())
-        max_score = max(self.scores.values())
-        denom = max_score - min_score
-        if denom <= 0:
-            normalized = {cid: 0.0 for cid in self.scores}
-        else:
-            normalized = {cid: (score - min_score) / denom
-                          for cid, score in self.scores.items()}
-        return sorted(normalized.items(), key=lambda x: x[1], reverse=True)[:k]
+    @staticmethod
+    def _softmax(scores_dict, temperature: float):
+        print(scores_dict)
+        if not scores_dict:
+            return {}
+        if temperature == 0:
+            raise ValueError("Temperature for softmax normalization must be non-zero.")
+        exp_scores = {
+            cid: math.exp(score / temperature) for cid, score in scores_dict.items()
+        }
+        total = sum(exp_scores.values())
+        if total == 0:
+            return {cid: 0.0 for cid in scores_dict}
+        return {cid: val / total for cid, val in exp_scores.items()}
+
+    def dump_topk(self, k=20, T=1500.0):
+        softmax_scores = self._softmax(self.scores, T)
+        return sorted(softmax_scores.items(), key=lambda x: x[1], reverse=True)[:k]
 
 class Server(object):
     def __init__(self, args, init_global_params):
@@ -38,23 +44,12 @@ class Server(object):
 
 
     def aggregate_params(self, clients, random_cids):
-        """Sums up parameters of models shared by all active clients at each
-        epoch.
-
-        Args:
-            clients: A list of clients instances.
-            random_cids: Randomly selected client ID in each training round.
-        """
-        # Record the model parameter aggregation results of each branch
-        # separately
         num_branchs = len(self.global_params)
         print(num_branchs)
         for branch_idx in range(num_branchs):
             client_params_sum = None
             for c_id in random_cids:
-                # Obtain current client's parameters
                 current_client_params = clients[c_id].get_params()[branch_idx]
-                # Sum it up with weights
                 if client_params_sum is None:
                     client_params_sum = dict((key, value
                                               * clients[c_id].train_weight)
@@ -67,20 +62,9 @@ class Server(object):
             self.global_params[branch_idx] = client_params_sum
 
     def aggregate_reps(self, clients, random_cids):
-        """Sums up representations of user sequences shared by all active
-        clients at each epoch.
-
-        Args:
-            clients: A list of clients instances.
-            random_cids: Randomly selected client ID in each training round.
-        """
-        # Record the user sequence aggregation results of each branch
-        # separately
         client_reps_sum = None
         for c_id in random_cids:
-            # Obtain current client's user sequence representations
             current_client_reps = clients[c_id].get_reps_shared()
-            # Sum it up with weights
             if client_reps_sum is None:
                 client_reps_sum = current_client_reps * \
                     clients[c_id].train_weight
@@ -90,23 +74,16 @@ class Server(object):
         self.global_reps = client_reps_sum
 
     def choose_clients(self, n_clients, ratio=1.0):
-        """Randomly chooses some clients.
-        """
         choose_num = math.ceil(n_clients * ratio)
         return np.random.permutation(n_clients)[:choose_num]
 
     def add_eval_score(self, cid, score):
-        """Accumulates attribution score reported by a client."""
         if score is None:
             return
         self.attributor.add_score(cid, score)
 
     def get_global_params(self):
-        """Returns a reference to the parameters of the global model.
-        """
         return self.global_params
 
     def get_global_reps(self):
-        """Returns a reference to the parameters of the global model.
-        """
         return self.global_reps

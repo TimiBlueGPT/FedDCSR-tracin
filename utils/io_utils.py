@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Ultity functions for IO.
-"""
 import os
 import json
 import logging
 
-##################################
-#               IO               #
-##################################
+
 
 
 def check_dir(dir):
@@ -30,13 +26,9 @@ def ensure_dir(dir, verbose=True):
         os.makedirs(dir)
 
 
-##################################
-#  Input Argument Configuration  #
-##################################
 
 
 def save_config(args, verbose=True):
-    # Ensure the directory exists
     model_id = args.id if len(args.id) > 1 else "0" + args.id
     method_ckpt_path = os.path.join(args.checkpoint_dir,
                                     "domain_" +
@@ -44,8 +36,6 @@ def save_config(args, verbose=True):
                                             for domain in args.domains]),
                                     args.method + "_" + model_id)
     ensure_dir(method_ckpt_path, verbose=True)
-
-    # Save the input argument configuration
     config_filename = os.path.join(method_ckpt_path, "config.json")
     args_dict = vars(args)
     with open(config_filename, "w") as outfile:
@@ -53,7 +43,6 @@ def save_config(args, verbose=True):
     if verbose:
         print("Config saved to file {}.".format(config_filename))
 
-    # Print the input argument information
     print_config(args_dict)
 
 

@@ -57,23 +57,17 @@ def run_fl(clients, server, args):
             arr = np.array([3, 1, 2, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
 
-            # Train with these clients
             for c_id in tqdm(arr, ascii=True):
                 if "Fed" in args.method:
-                    # Restore global parameters to client's model
                     clients[c_id].set_global_params(server.get_global_params())
                     if args.method == "VeriFRL":
                         clients[c_id].set_global_reps(server.get_global_reps())
 
-                # Train one client
                 clients[c_id].train_epoch(
                     round, args, global_params=server.global_params)
                 if hasattr(server, "add_eval_score"):
                     server.add_eval_score(c_id, clients[c_id].latest_eval_score)
-            #logging.info("Every client's tracin score is here:%s",str(server.attributor.dump_topk()))
-            #print(server.attributor.dump_topk())
-            topk_scores = server.attributor.dump_topk()
-            print(f"Normalized TracIn scores: {topk_scores}")
+            logging.info("Every client's tracin score is here:%s",str(server.attributor.dump_topk()))
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
                 if args.method == "VeriFRL":
@@ -96,15 +90,11 @@ def run_fl(clients, server, args):
                 avg_eval_log = evaluation_logging(
                     eval_logs, round, weights, mode="valid")
 
-                # Early Stopping. Here only compare the current results with
-                # the best results
                 early_stopping(avg_eval_log, clients)
                 if early_stopping.early_stop:
                     logging.info("Early stopping")
                     break
 
-                # Learning rate decay. Here only compare the current results
-                # with the latest results
                 lr_decay(round, avg_eval_log, clients)
 
         load_and_eval_model(n_clients, clients, args)

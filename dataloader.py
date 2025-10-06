@@ -1,14 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Customized dataloader.
-"""
 import random
 import numpy as np
 from torch.utils.data import DataLoader
 
 
 class SeqDataloader(DataLoader):
-    """A customized dataloader class iterating over the customized dataset.
-    """
 
     def __init__(self, dataset, batch_size=128, shuffle=True):
         self.dataset = dataset
@@ -25,7 +21,6 @@ class SeqDataloader(DataLoader):
         else:
             self.num_batch = len(dataset) // batch_size + 1
             if self.mode == "train":
-                # Concat
                 self.dataset += self.dataset[: batch_size -
                                              len(dataset) % batch_size]
 

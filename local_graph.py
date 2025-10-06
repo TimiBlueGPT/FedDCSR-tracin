@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-"""Local Graph class.
-"""
 import numpy as np
 import scipy.sparse as sp
 import torch
@@ -8,8 +6,6 @@ import os
 
 
 def normalize(mx):
-    """Row-normalize sparse matrix.
-    """
     rowsum = np.array(mx.sum(1))
     r_inv = np.power(rowsum, -1).flatten()
     r_inv[np.isinf(r_inv)] = 0.
@@ -19,8 +15,6 @@ def normalize(mx):
 
 
 def sparse_mx_to_torch_sparse_tensor(sparse_mx):
-    """Convert a scipy sparse matrix to a torch sparse tensor.
-    """
     sparse_mx = sparse_mx.tocoo().astype(np.float32)
     indices = torch.from_numpy(
         np.vstack((sparse_mx.row, sparse_mx.col)).astype(np.int64))
@@ -33,9 +27,6 @@ def sparse_mx_to_torch_sparse_tensor(sparse_mx):
 
 
 class LocalGraph(object):
-    """A local graph data structure class reading training data of a certain
-    domain from ".txt" files, and preprocess it into a local graph.
-    """
     data_dir = "data"
 
     def __init__(self, args, domain, num_items):
@@ -52,7 +43,7 @@ class LocalGraph(object):
             for line in infile.readlines():
                 session = []
                 line = line.strip().split("\t")
-                for item in line[1:]:  # Start from index 1 to exclude user ID
+                for item in line[1:]:
                     item = int(item)
                     session.append(item)
                 train_data.append(session)

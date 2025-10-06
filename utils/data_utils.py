@@ -64,9 +64,6 @@ def load_dataset(args):
 
 
 def init_clients_weight(clients):
-    """Initialize the aggretation weight, which is the ratio of the number of
-    samples per client to the total number of samples.
-    """
     client_n_samples_train = [client.n_samples_train for client in clients]
 
     samples_sum_train = np.sum(client_n_samples_train)
