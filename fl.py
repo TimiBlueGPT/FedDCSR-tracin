@@ -3,6 +3,7 @@ import logging
 from tqdm import tqdm
 from utils.train_utils import EarlyStopping, LRDecay
 import numpy as np
+from utils.influence_utils import compute_influence_for_clients
 
 
 def evaluation_logging(eval_logs, round, weights, mode="valid"):
@@ -72,7 +73,9 @@ def run_fl(clients, server, args):
                 server.aggregate_params(clients, random_cids)
                 if args.method == "VeriFRL":
                     server.aggregate_reps(clients, random_cids)
-
+            if args.ckpt_interval and round % args.ckpt_interval == 0:
+                for c_id in range(n_clients):
+                    clients[c_id].save_round_checkpoint(round)
             if round % args.eval_interval == 0:
                 eval_logs = {}
                 for c_id in tqdm(range(n_clients), ascii=True):
@@ -98,3 +101,5 @@ def run_fl(clients, server, args):
                 lr_decay(round, avg_eval_log, clients)
 
         load_and_eval_model(n_clients, clients, args)
+        if args.method == "VeriFRL" and args.compute_influence:
+            compute_influence_for_clients(clients, args)
