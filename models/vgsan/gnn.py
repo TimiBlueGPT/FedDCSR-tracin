@@ -10,6 +10,8 @@ from . import config
 
 
 class GCNLayer(nn.Module):
+    """GCN Module layer.
+    """
 
     def __init__(self, args):
         super(GCNLayer, self).__init__()
@@ -76,12 +78,11 @@ class GraphConvolution(Module):
         return nn.Parameter(initial / 2)
 
     def forward(self, input, adj):
-        support = input
+        support = torch.matmul(input, self.weight)
         output = torch.spmm(adj, support)
         if self.bias is not None:
-            return output + self.bias
-        else:
-            return output
+            output = output + self.bias
+        return output
 
     def __repr__(self):
         return self.__class__.__name__ + " (" \
