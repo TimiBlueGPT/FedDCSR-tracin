@@ -90,8 +90,8 @@ class DisenVGSAN(nn.Module):
             self.item_emb_s, self.item_index_s)
         item_embs_e = self.my_index_select_embedding(
             self.item_emb_e, self.item_index_e)
-        self.item_graph_embs_s = self.GNN_encoder_s(item_embs_s, adj).detach()
-        self.item_graph_embs_e = self.GNN_encoder_e(item_embs_e, adj).detach()
+        self.item_graph_embs_s = self.GNN_encoder_s(item_embs_s, adj)
+        self.item_graph_embs_e = self.GNN_encoder_e(item_embs_e, adj)
 
     def get_position_ids(self, seqs):
         seq_length = seqs.size(1)
