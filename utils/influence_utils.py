@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import json
 import logging
 import math
@@ -111,7 +110,7 @@ def _compute_validation_gradients(client, params, args, seed_offset):
     num_batches = 0
 
     for batch_idx, (_, sessions) in enumerate(client.valid_dataloader):
-        if (client.method == "FedDCSR") or ("VGSAN" in client.method):
+        if (client.method == "VeriFRL") or ("VGSAN" in client.method):
             model.graph_convolution(client.adj)
         prepared_sessions = _prepare_validation_batch_for_disen(
             sessions, client.num_items, seed_offset + batch_idx)
@@ -144,7 +143,7 @@ def _compute_train_loss_and_grads(client, params, args):
     model = trainer.model
     device = trainer.device
     model.train()
-    if (client.method == "FedDCSR") or ("VGSAN" in client.method):
+    if (client.method == "VeriFRL") or ("VGSAN" in client.method):
         model.graph_convolution(client.adj)
 
     target_samples = max(1, int(client.n_samples_train
@@ -318,7 +317,6 @@ def compute_influence_for_clients(clients, args):
                 branch_scores[branch_name] = float((-branch_dot).item())
 
             influence_results[round_dir]["client_%d" % client.c_id] = branch_scores
-            logging.info("Here is the IF score:%s",influence_results)
 
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()

@@ -5,7 +5,6 @@ import logging
 
 
 
-
 def check_dir(dir):
     if not os.path.exists(dir):
         print("Directory {} does not exist. Exit.".format(dir))
@@ -36,6 +35,7 @@ def save_config(args, verbose=True):
                                             for domain in args.domains]),
                                     args.method + "_" + model_id)
     ensure_dir(method_ckpt_path, verbose=True)
+
     config_filename = os.path.join(method_ckpt_path, "config.json")
     args_dict = vars(args)
     with open(config_filename, "w") as outfile:

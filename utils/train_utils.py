@@ -7,6 +7,7 @@ from torch.optim.optimizer import Optimizer
 
 class MyAdagrad(Optimizer):
 
+
     def __init__(self, params, lr=1e-2, lr_decay=0, init_accu_value=0.1,
                  weight_decay=0):
         defaults = dict(lr=lr, lr_decay=lr_decay,
@@ -90,6 +91,7 @@ def get_optimizer(name, parameters, lr, l2=0):
         return torch.optim.Adadelta(parameters, lr=lr, weight_decay=l2)
     else:
         raise Exception("Unsupported optimizer: {}".format(name))
+
 
 
 
