@@ -5,7 +5,6 @@ from torch.utils.data import DataLoader
 
 
 class SeqDataloader(DataLoader):
-
     def __init__(self, dataset, batch_size=128, shuffle=True):
         self.dataset = dataset
         self.num_items = dataset.num_items

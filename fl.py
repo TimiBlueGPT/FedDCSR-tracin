@@ -5,7 +5,6 @@ from utils.train_utils import EarlyStopping, LRDecay
 import numpy as np
 from utils.influence_utils import compute_influence_for_clients
 
-
 def evaluation_logging(eval_logs, round, weights, mode="valid"):
     if mode == "valid":
         logging.info("Epoch%d Valid:" % round)
@@ -58,17 +57,22 @@ def run_fl(clients, server, args):
             arr = np.array([3, 1, 2, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
 
+
             for c_id in tqdm(arr, ascii=True):
                 if "Fed" in args.method:
+
                     clients[c_id].set_global_params(server.get_global_params())
                     if args.method == "VeriFRL":
                         clients[c_id].set_global_reps(server.get_global_reps())
+
 
                 clients[c_id].train_epoch(
                     round, args, global_params=server.global_params)
                 if hasattr(server, "add_eval_score"):
                     server.add_eval_score(c_id, clients[c_id].latest_eval_score)
-            logging.info("Every client's tracin score is here:%s",str(server.attributor.dump_topk()))
+
+            topk_scores = server.attributor.dump_topk()
+            print(f"Normalized TracIn scores: {topk_scores}")
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
                 if args.method == "VeriFRL":
@@ -76,6 +80,7 @@ def run_fl(clients, server, args):
             if args.ckpt_interval and round % args.ckpt_interval == 0:
                 for c_id in range(n_clients):
                     clients[c_id].save_round_checkpoint(round)
+
             if round % args.eval_interval == 0:
                 eval_logs = {}
                 for c_id in tqdm(range(n_clients), ascii=True):

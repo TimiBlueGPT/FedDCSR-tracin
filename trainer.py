@@ -180,6 +180,8 @@ class ModelTrainer(Trainer):
         def sim_loss_fn(self, z_s, z_g, neg_z_e, ground_mask):
             pos = self.discri(z_s, z_g, ground_mask)
             neg = self.discri(neg_z_e, z_g, ground_mask)
+
+
             sim_loss = self.hinge_criterion(pos, neg)
 
             sim_loss = sim_loss.mean()
@@ -220,7 +222,6 @@ class ModelTrainer(Trainer):
         beta = 2.0
 
         gamma = 1.0
-
         lam = 1.0
 
         user_representation1 = z_e[:, -1, :]
@@ -358,6 +359,7 @@ class ModelTrainer(Trainer):
         return loss
 
     def kl_anneal_function(self, anneal_cap, step, total_annealing_step):
+
         return min(anneal_cap, step / total_annealing_step)
 
     @ staticmethod
@@ -378,7 +380,6 @@ class ModelTrainer(Trainer):
 
     def test_batch(self, sessions):
         sessions = [torch.LongTensor(x).to(self.device) for x in sessions]
-
         seq, ground_truth, neg_list = sessions
         result = self.model(seq)
 

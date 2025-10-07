@@ -41,7 +41,6 @@ class Client:
             train_dataset, batch_size=args.batch_size, shuffle=False
         )
 
-
         self.n_samples_train = len(train_dataset)
         self.n_samples_valid = len(valid_dataset)
         self.n_samples_test = len(test_dataset)

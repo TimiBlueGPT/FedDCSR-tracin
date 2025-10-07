@@ -26,7 +26,6 @@ def arg_parse():
                         "you want to load preprocessed data, add it")
     parser.add_argument("--max_seq_len", type=int,
                         default=16, help="maxisum sequence length")
-
     parser.add_argument("--method", type=str, default="VeriFRL",
                         help="method, possible are `VeriFRL`(ours), "
                         "`FedVGSAN`, `LocalVGSAN`, `FedSASRec`, "
@@ -37,7 +36,7 @@ def arg_parse():
                         default="log", help="directory of logs")
     parser.add_argument("--cuda", type=bool, default=torch.cuda.is_available())
     parser.add_argument("--gpu", type=str, default="0", help="GPU ID to use")
-    parser.add_argument("--epochs", type=int, default=40,
+    parser.add_argument("--epochs", type=int, default=0,
                         help="Number of total training iterations.")
     parser.add_argument("--local_epoch", type=int, default=3,
                         help="Number of local training epochs.")
@@ -53,7 +52,7 @@ def arg_parse():
     parser.add_argument("--decay_epoch", type=int, default=10,
                         help="Decay learning rate after this epoch.")
     parser.add_argument("--batch_size", type=int,
-                        default=512, help="Training batch size.")
+                        default=64, help="Training batch size.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval_interval", type=int,
                         default=1, help="Interval of evalution")
@@ -85,6 +84,7 @@ def arg_parse():
     parser.add_argument("--influence_branch_tail_ratio", type=float, default=1.0,
                         help="Portion of each branch's parameters (from the tail) "
                              "used when computing influence scores.")
+
     parser.add_argument("--anneal_cap", type=float, default=1.0, help="KL "
                         "annealing arguments for variantional method "
                         "(including ours). 1.0 for FKCB is the best, 0.01 for "
@@ -143,7 +143,6 @@ def main():
     args = arg_parse()
     torch.autograd.set_detect_anomaly(True)
     args.compute_influence = not args.disable_influence
-
     seed_everything(args)
 
     init_logger(args)
