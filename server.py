@@ -36,7 +36,7 @@ class Server(object):
         self.args = args
         self.global_params = init_global_params
         self.attributor = ClientAttributor()
-        if args.method == "VeriFRL":
+        if args.method == "VeriFRL_Fed":
             self.global_reps = None
         
 

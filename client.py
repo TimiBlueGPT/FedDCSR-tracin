@@ -24,7 +24,7 @@ class Client:
             "domain_" + "".join([domain[0] for domain in args.domains]),
             self.method + "_" + self.model_id)
         ensure_dir(self._method_ckpt_path, verbose=True)
-        if args.method == "VeriFRL":
+        if args.method == "VeriFRL_Fed":
             self.z_s = self.trainer.z_s
             self.z_g = self.trainer.z_g
         self.c_id = c_id
@@ -80,7 +80,7 @@ class Client:
 
     def _get_shared_modules(self):
         modules = []
-        if self.method == "VeriFRL":
+        if self.method == "VeriFRL_Fed":
             modules.append(self.model.encoder_s)
         elif "VGSAN" in self.method:
             modules.append(self.model.encoder)
@@ -159,7 +159,7 @@ class Client:
         if lr is None or lr == 0:
             return None
         saved_z_s = None
-        if self.method == "VeriFRL" and self.z_s[0] is not None:
+        if self.method == "VeriFRL_Fed" and self.z_s[0] is not None:
             saved_z_s = copy.deepcopy(self.z_s[0].detach().clone())
         prev_training_mode = self.trainer.model.training
         self.trainer.model.load_state_dict(self._pre_train_state)
@@ -192,7 +192,7 @@ class Client:
             dataloader = self.test_dataloader
 
         self.trainer.model.eval()
-        if (self.method == "VeriFRL") or ("VGSAN" in self.method):
+        if (self.method == "VeriFRL_Fed") or ("VGSAN" in self.method):
             self.trainer.model.graph_convolution(self.adj)
         pred = []
         for _, sessions in dataloader:
@@ -259,7 +259,7 @@ class Client:
         return grads
 
     def get_params(self):
-        if self.method == "VeriFRL":
+        if self.method == "VeriFRL_Fed":
             return copy.deepcopy([self.model.encoder_s.state_dict()])
         elif "VGSAN" in self.method:
             return copy.deepcopy([self.model.encoder.state_dict()])
@@ -277,14 +277,14 @@ class Client:
             return copy.deepcopy([self.model.encoder.state_dict()])
 
     def get_reps_shared(self):
-        assert (self.method == "VeriFRL")
+        assert (self.method == "VeriFRL_Fed")
         return copy.deepcopy(self.z_s[0].detach())
 
     def set_global_params(self, global_params):
-        assert (self.method in ["VeriFRL", "FedVGSAN", "FedSASRec", "FedVSAN",
+        assert (self.method in ["VeriFRL_Fed", "FedVGSAN", "FedSASRec", "FedVSAN",
                                 "FedContrastVAE", "FedCL4SRec", "FedDuoRec"])
         self.init_global_params = copy.deepcopy(global_params)
-        if self.method == "VeriFRL":
+        if self.method == "VeriFRL_Fed":
             self.model.encoder_s.load_state_dict(global_params[0])
         elif self.method == "FedVGSAN":
             self.model.encoder.load_state_dict(global_params[0])
@@ -302,7 +302,7 @@ class Client:
             self.model.encoder.load_state_dict(global_params[0])
 
     def set_global_reps(self, global_rep):
-        assert (self.method == "VeriFRL")
+        assert (self.method == "VeriFRL_Fed")
         self.z_g[0] = copy.deepcopy(global_rep)
 
     def save_params(self):

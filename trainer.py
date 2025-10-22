@@ -33,7 +33,7 @@ class ModelTrainer(Trainer):
         self.args = args
         self.method = args.method
         self.device = "cuda:%s" % args.gpu if args.cuda else "cpu"
-        if self.method == "VeriFRL":
+        if self.method == "VeriFRL_Fed":
             self.model = DisenVGSAN(num_items, args).to(self.device)
             self.z_s, self.z_g = [None], [None]
             self.discri = Discriminator(
@@ -60,7 +60,7 @@ class ModelTrainer(Trainer):
         self.jsd_criterion = JSDLoss().to(self.device)
         self.hinge_criterion = HingeLoss(margin=0.3).to(self.device)
 
-        if args.method == "VeriFRL":
+        if args.method == "VeriFRL_Fed":
             self.params = list(self.model.parameters()) + \
                 list(self.discri.parameters())
         else:
@@ -73,12 +73,12 @@ class ModelTrainer(Trainer):
                          include_prox=True, update_state=True):
 
 
-        if (self.method == "VeriFRL") or ("VGSAN" in self.method):
+        if (self.method == "VeriFRL_Fed") or ("VGSAN" in self.method):
             self.model.graph_convolution(adj)
 
         sessions = [torch.LongTensor(x).to(self.device) for x in sessions]
 
-        if self.method == "VeriFRL":
+        if self.method == "VeriFRL_Fed":
 
             seq, ground, ground_mask, js_neg_seqs, contrast_aug_seqs = sessions
             result, result_exclusive, mu_s, logvar_s, z_s, mu_e, \

@@ -110,7 +110,7 @@ def _compute_validation_gradients(client, params, args, seed_offset):
     num_batches = 0
 
     for batch_idx, (_, sessions) in enumerate(client.valid_dataloader):
-        if (client.method == "VeriFRL") or ("VGSAN" in client.method):
+        if (client.method == "VeriFRL_Fed") or ("VGSAN" in client.method):
             model.graph_convolution(client.adj)
         prepared_sessions = _prepare_validation_batch_for_disen(
             sessions, client.num_items, seed_offset + batch_idx)
@@ -143,7 +143,7 @@ def _compute_train_loss_and_grads(client, params, args):
     model = trainer.model
     device = trainer.device
     model.train()
-    if (client.method == "VeriFRL") or ("VGSAN" in client.method):
+    if (client.method == "VeriFRL_Fed") or ("VGSAN" in client.method):
         model.graph_convolution(client.adj)
 
     target_samples = max(1, int(client.n_samples_train

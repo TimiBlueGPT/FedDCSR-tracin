@@ -26,8 +26,8 @@ def arg_parse():
                         "you want to load preprocessed data, add it")
     parser.add_argument("--max_seq_len", type=int,
                         default=16, help="maxisum sequence length")
-    parser.add_argument("--method", type=str, default="VeriFRL",
-                        help="method, possible are `VeriFRL`(ours), "
+    parser.add_argument("--method", type=str, default="VeriFRL_Fed",
+                        help="method, possible are `VeriFRL_Fed`(ours), "
                         "`FedVGSAN`, `LocalVGSAN`, `FedSASRec`, "
                         "`LocalSASRec`, `FedVSAN`, `LocalVSAN`, "
                         "`FedContrastVAE`, `LocalContrastVAE`, `FedCL4SRec`, "
@@ -97,7 +97,7 @@ def arg_parse():
     parser.add_argument("--sim", type=str, default="dot")
 
     args = parser.parse_args()
-    assert (args.method in ["VeriFRL", "FedVGSAN", "LocalVGSAN", "FedSASRec",
+    assert (args.method in ["VeriFRL_Fed", "FedVGSAN", "LocalVGSAN", "FedSASRec",
                             "LocalSASRec", "FedVSAN", "LocalVSAN",
                             "FedContrastVAE", "LocalContrastVAE", "FedCL4SRec",
                             "LocalCL4SRec", "FedDuoRec", "LocalDuoRec"])

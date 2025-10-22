@@ -62,7 +62,7 @@ def run_fl(clients, server, args):
                 if "Fed" in args.method:
 
                     clients[c_id].set_global_params(server.get_global_params())
-                    if args.method == "VeriFRL":
+                    if args.method == "VeriFRL_Fed":
                         clients[c_id].set_global_reps(server.get_global_reps())
 
 
@@ -75,7 +75,7 @@ def run_fl(clients, server, args):
             print(f"Normalized TracIn scores: {topk_scores}")
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
-                if args.method == "VeriFRL":
+                if args.method == "VeriFRL_Fed":
                     server.aggregate_reps(clients, random_cids)
             if args.ckpt_interval and round % args.ckpt_interval == 0:
                 for c_id in range(n_clients):
@@ -106,5 +106,5 @@ def run_fl(clients, server, args):
                 lr_decay(round, avg_eval_log, clients)
 
         load_and_eval_model(n_clients, clients, args)
-        if args.method == "VeriFRL" and args.compute_influence:
+        if args.method == "VeriFRL_Fed" and args.compute_influence:
             compute_influence_for_clients(clients, args)
