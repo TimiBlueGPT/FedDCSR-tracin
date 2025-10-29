@@ -12,6 +12,9 @@ class ClientAttributor:
     def add_score(self, cid, score: float):
         self.scores[cid] += float(score)
 
+    def current_score(self, cid, score: float):
+        self.scores[cid] = float(score)
+
     @staticmethod
     def _softmax(scores_dict, temperature: float):
         print(scores_dict)
@@ -81,6 +84,11 @@ class Server(object):
         if score is None:
             return
         self.attributor.add_score(cid, score)
+
+    def set_current_score(self, cid, score):
+        if score is None:
+            return
+        self.attributor.current_score(cid, score)
 
     def get_global_params(self):
         return self.global_params

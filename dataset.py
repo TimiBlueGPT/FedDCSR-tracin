@@ -90,7 +90,7 @@ class SeqDataset(Dataset):
         prep_sessions = []
         for session in data:
             temp = []
-            if mode == "train":
+            if mode == "train" or mode == "tracin":
                 items_input = session[:-1]
                 ground_truths = session[1:]
                 js_neg_seq = copy.deepcopy(items_input)
@@ -103,7 +103,7 @@ class SeqDataset(Dataset):
             pad_len = self.max_seq_len - len(items_input)
             items_input = [self.num_items] * pad_len + items_input
             temp.append(items_input)
-            if mode == "train":
+            if mode == "train" or mode == "tracin":
                 pad_len1 = self.max_seq_len - len(js_neg_seq)
                 pad_len2 = self.max_seq_len - len(contrast_aug_seq)
                 ground_mask = [0] * pad_len + [1] * len(ground_truths)

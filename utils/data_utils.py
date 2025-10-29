@@ -60,7 +60,7 @@ def load_dataset(args):
         adjs_tracin[idx] = adj.to(device)
 
     return client_train_datasets, client_valid_datasets, \
-        client_test_datasets,client_tracin_datasets, adjs
+        client_test_datasets,client_tracin_datasets, adjs, adjs_tracin
 
 
 def init_clients_weight(clients):

@@ -56,7 +56,8 @@ def run_fl(clients, server, args):
         for round in range(1, args.epochs + 1):
             arr = np.array([3, 1, 2, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
-
+            for c_id in range(4):
+                logging.info(clients[c_id].train_weight)
 
             for c_id in tqdm(arr, ascii=True):
                 if "Fed" in args.method:
@@ -68,11 +69,20 @@ def run_fl(clients, server, args):
 
                 clients[c_id].train_epoch(
                     round, args, global_params=server.global_params)
+                """
                 if hasattr(server, "add_eval_score"):
                     server.add_eval_score(c_id, clients[c_id].latest_eval_score)
+                """
+
+                if hasattr(server, "set_current_score"):
+                    server.set_current_score(c_id, clients[c_id].latest_eval_score)
 
             topk_scores = server.attributor.dump_topk()
-            print(f"Normalized TracIn scores: {topk_scores}")
+            logging.info(f"Normalized TracIn scores: {topk_scores}")
+
+            for c_id in tqdm(random_cids, ascii=True):
+                clients[c_id].train_weight=topk_scores[c_id][1]
+
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
                 if args.method == "VeriFRL_Fed":

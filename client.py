@@ -10,7 +10,7 @@ from utils.io_utils import ensure_dir
 
 
 class Client:
-    def __init__(self, model_fn, c_id, args, adj, train_dataset, valid_dataset, test_dataset,tracin_dataset):
+    def __init__(self, model_fn, c_id, args, adj, adjs_tracin, train_dataset, valid_dataset, test_dataset,tracin_dataset):
         self.num_items = train_dataset.num_items
         self.domain = train_dataset.domain
         self.max_seq_len = args.max_seq_len
@@ -30,6 +30,7 @@ class Client:
         self.c_id = c_id
         self.args = args
         self.adj = adj
+        self.adjs_tracin = adjs_tracin
 
         self.train_dataloader = SeqDataloader(
             train_dataset, batch_size=args.batch_size, shuffle=True)
@@ -38,7 +39,7 @@ class Client:
         self.test_dataloader = SeqDataloader(
             test_dataset, batch_size=args.batch_size, shuffle=False)
         self.tracin_dataloader = SeqDataloader(
-            train_dataset, batch_size=args.batch_size, shuffle=False
+            tracin_dataset, batch_size=args.batch_size, shuffle=False
         )
 
         self.n_samples_train = len(train_dataset)
@@ -166,7 +167,7 @@ class Client:
         self.trainer.model.train()
         self.trainer.optimizer.zero_grad()
         loss = self.trainer.compute_loss(
-            eval_batch, self.adj, self.num_items, self.args,
+            eval_batch, self.adjs_tracin, self.num_items, self.args,
             global_params=self.init_global_params,
             include_prox=False, update_state=False)
         loss.backward()

@@ -36,7 +36,7 @@ def arg_parse():
                         default="log", help="directory of logs")
     parser.add_argument("--cuda", type=bool, default=torch.cuda.is_available())
     parser.add_argument("--gpu", type=str, default="0", help="GPU ID to use")
-    parser.add_argument("--epochs", type=int, default=0,
+    parser.add_argument("--epochs", type=int, default=20,
                         help="Number of total training iterations.")
     parser.add_argument("--local_epoch", type=int, default=3,
                         help="Number of local training epochs.")
@@ -52,7 +52,7 @@ def arg_parse():
     parser.add_argument("--decay_epoch", type=int, default=10,
                         help="Decay learning rate after this epoch.")
     parser.add_argument("--batch_size", type=int,
-                        default=64, help="Training batch size.")
+                        default=128, help="Training batch size.")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--eval_interval", type=int,
                         default=1, help="Interval of evalution")
@@ -147,10 +147,10 @@ def main():
 
     init_logger(args)
 
-    train_datasets, valid_datasets, test_datasets,tracin_dataset, adjs = load_dataset(args)
+    train_datasets, valid_datasets, test_datasets,tracin_dataset, adjs, adjs_tracin = load_dataset(args)
 
     n_clients = len(args.domains)
-    clients = [Client(ModelTrainer, c_id, args, adjs[c_id],
+    clients = [Client(ModelTrainer, c_id, args, adjs[c_id], adjs_tracin[c_id],
                       train_datasets[c_id], valid_datasets[c_id],
                       test_datasets[c_id],tracin_dataset[c_id]) for c_id in range(n_clients)]
     init_clients_weight(clients)
