@@ -14,17 +14,20 @@ def evaluation_logging(eval_logs, round, weights, mode="valid"):
     avg_eval_log = {}
     for metric_name in list(eval_logs.values())[0].keys():
         avg_eval_val = 0
+        sum_MRR=0.0
+        MRR2_sum=0.0
         for domain in eval_logs.keys():
+            sum_MRR += eval_logs[domain]["MRR"]
+            MRR2_sum += eval_logs[domain]["MRR2"]**2
             avg_eval_val = avg_eval_val + eval_logs[domain][metric_name] * weights[domain]
         avg_eval_log[metric_name] = avg_eval_val
-
+    jain_index = sum_MRR/(len(eval_logs.keys()))*MRR2_sum
     logging.info("MRR: %.4f" % avg_eval_log["MRR"])
-    logging.info("HR @1|5|10: %.4f \t %.4f \t %.4f \t" %
-                 (avg_eval_log["HR @1"], avg_eval_log["HR @5"],
-                     avg_eval_log["HR @10"]))
-    logging.info("NDCG @5|10: %.4f \t %.4f" %
-                 (avg_eval_log["NDCG @5"], avg_eval_log["NDCG @10"]))
-
+    logging.info("HR @10: %.4f \t" %
+                 (avg_eval_log["HR @10"]))
+    logging.info("NDCG @10: %.4f" %
+                 ( avg_eval_log["NDCG @10"]))
+    logging.info("Jain's Fairness Index: %.4f"%(jain_index))
     for domain, eval_log in eval_logs.items():
         logging.info("%s MRR: %.4f \t HR @10: %.4f \t NDCG @10: %.4f"
                      % (domain, eval_log["MRR"], eval_log["HR @10"],

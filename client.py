@@ -46,8 +46,8 @@ class Client:
         self.n_samples_valid = len(valid_dataset)
         self.n_samples_test = len(test_dataset)
         self.train_pop, self.valid_weight, self.test_weight = 0.0, 0.0, 0.0
-        self.MRR, self.NDCG_5, self.NDCG_10, self.HR_1, self.HR_5, self.HR_10 \
-            = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
+        self.MRR, self.NDCG_10, self.HR_10 \
+            = 0.0, 0.0, 0.0
         self.init_global_params = copy.deepcopy(self.get_params())
         self.latest_eval_score = None
         self._pre_train_state = None
@@ -201,7 +201,7 @@ class Client:
             pred = pred + predictions
 
         gc.collect()
-        self.MRR, self.NDCG_5, self.NDCG_10, self.HR_1, self.HR_5, self.HR_10 \
+        self.MRR, self.NDCG_10, self.HR_10 \
             = self.cal_test_score(pred)
         return {"MRR": self.MRR, "HR @1": self.HR_1, "HR @5": self.HR_5,
                 "HR @10":  self.HR_10, "NDCG @5":  self.NDCG_5,
@@ -215,26 +215,17 @@ class Client:
     @ staticmethod
     def cal_test_score(predictions):
         MRR = 0.0
-        HR_1 = 0.0
-        HR_5 = 0.0
         HR_10 = 0.0
-        NDCG_5 = 0.0
         NDCG_10 = 0.0
         valid_entity = 0.0
         for pred in predictions:
             valid_entity += 1
             MRR += 1 / pred
-            if pred <= 1:
-                HR_1 += 1
-            if pred <= 5:
-                NDCG_5 += 1 / np.log2(pred + 1)
-                HR_5 += 1
             if pred <= 10:
                 NDCG_10 += 1 / np.log2(pred + 1)
                 HR_10 += 1
-        return MRR/valid_entity, NDCG_5 / valid_entity, \
-            NDCG_10 / valid_entity, HR_1 / valid_entity, HR_5 / \
-            valid_entity, HR_10 / valid_entity
+        return MRR/valid_entity, \
+            NDCG_10 / valid_entity, HR_10 / valid_entity
 
 
     def get_grads(self):
