@@ -203,13 +203,13 @@ class Client:
         gc.collect()
         self.MRR, self.NDCG_10, self.HR_10 \
             = self.cal_test_score(pred)
-        return {"MRR": self.MRR, "HR @1": self.HR_1, "HR @5": self.HR_5,
-                "HR @10":  self.HR_10, "NDCG @5":  self.NDCG_5,
+        return {"MRR": self.MRR, 
+                "HR @10":  self.HR_10, 
                 "NDCG @10": self.NDCG_10}
 
     def get_old_eval_log(self):
-        return {"MRR": self.MRR, "HR @1": self.HR_1, "HR @5": self.HR_5,
-                "HR @10":  self.HR_10, "NDCG @5":  self.NDCG_5,
+        return {"MRR": self.MRR, 
+                "HR @10":  self.HR_10,
                 "NDCG @10": self.NDCG_10}
 
     @ staticmethod

@@ -5,33 +5,94 @@ from utils.train_utils import EarlyStopping, LRDecay
 import numpy as np
 from utils.influence_utils import compute_influence_for_clients
 
-def evaluation_logging(eval_logs, round, weights, mode="valid"):
-    if mode == "valid":
-        logging.info("Epoch%d Valid:" % round)
-    else:
-        logging.info("Test:")
+JAIN_HISTORY = {"MRR": [], "HR @10": [], "NDCG @10": []}
+DELTA_JAIN_HISTORY = {"MRR": [], "HR @10": [], "NDCG @10": []}
 
-    avg_eval_log = {}
-    for metric_name in list(eval_logs.values())[0].keys():
-        avg_eval_val = 0
-        sum_MRR=0.0
-        MRR2_sum=0.0
-        for domain in eval_logs.keys():
-            sum_MRR += eval_logs[domain]["MRR"]
-            MRR2_sum += eval_logs[domain]["MRR2"]**2
-            avg_eval_val = avg_eval_val + eval_logs[domain][metric_name] * weights[domain]
-        avg_eval_log[metric_name] = avg_eval_val
-    jain_index = sum_MRR/(len(eval_logs.keys()))*MRR2_sum
-    logging.info("MRR: %.4f" % avg_eval_log["MRR"])
-    logging.info("HR @10: %.4f \t" %
-                 (avg_eval_log["HR @10"]))
-    logging.info("NDCG @10: %.4f" %
-                 ( avg_eval_log["NDCG @10"]))
-    logging.info("Jain's Fairness Index: %.4f"%(jain_index))
-    for domain, eval_log in eval_logs.items():
-        logging.info("%s MRR: %.4f \t HR @10: %.4f \t NDCG @10: %.4f"
-                     % (domain, eval_log["MRR"], eval_log["HR @10"],
-                         eval_log["NDCG @10"]))
+
+def temporal_stability_index_adj_diff(values):
+    """按相邻差分法计算 Temporal Stability Index (TSI)，不除以均值。"""
+    values = np.array(values, dtype=float)
+    if len(values) < 2:
+        return 1.0
+    diffs = np.abs(np.diff(values))
+    mean_diff = np.mean(diffs)
+    tsi = 1 - mean_diff
+    return np.clip(tsi, 0, 1)
+
+
+def evaluation_logging(eval_logs, round_id, weights, mode="valid"):
+    """
+    计算平均指标、Jain's Fairness Index、CV、Entropy、TSI、ΔJain（公平性变化率）
+    """
+
+    # 日志头
+    if mode == "valid":
+        logging.info(f"Epoch {round_id} Validation:")
+    else:
+        logging.info(f"Epoch {round_id} Test:")
+
+    metric_names = list(eval_logs.values())[0].keys()
+    sum_dict = {m: 0.0 for m in metric_names}
+    sum2_dict = {m: 0.0 for m in metric_names}
+    avg_eval_log = {m: 0.0 for m in metric_names}
+
+    # 累加各 domain 指标
+    for domain, metrics in eval_logs.items():
+        for m in metric_names:
+            val = metrics[m]
+            sum_dict[m] += val
+            sum2_dict[m] += val ** 2
+            avg_eval_log[m] += val * weights[domain]
+
+    # ---- 计算 Jain / CV / Entropy ----
+    numbers = len(eval_logs)
+    jain_index, cv_index, entropy_index = {}, {}, {}
+    for m in metric_names:
+        mean = sum_dict[m] / numbers
+        std = np.sqrt(sum2_dict[m] / numbers - mean ** 2)
+        jain_index[m] = (sum_dict[m] ** 2) / (numbers * sum2_dict[m]) if sum2_dict[m] != 0 else 0
+        cv_index[m] = std / mean if mean != 0 else 0
+
+        vals = np.array([eval_logs[d][m] for d in eval_logs])
+        vals = np.clip(vals, 1e-12, None)
+        p = vals / np.sum(vals)
+        entropy = -np.sum(p * np.log(p))
+        entropy_index[m] = entropy / np.log(numbers)
+
+    # ---- 更新 Jain 历史并计算 TSI、ΔJain ----
+    tsi_index, delta_jain = {}, {}
+    for m in metric_names:
+        # 更新 Jain 历史
+        JAIN_HISTORY.setdefault(m, []).append(jain_index[m])
+
+        # Temporal Stability
+        tsi_index[m] = temporal_stability_index_adj_diff(JAIN_HISTORY[m])
+
+        # ΔJain: 当前轮与上一轮差
+        if len(JAIN_HISTORY[m]) >= 2:
+            diff = jain_index[m] - JAIN_HISTORY[m][-2]
+        else:
+            diff = 0.0
+        delta_jain[m] = diff
+        DELTA_JAIN_HISTORY.setdefault(m, []).append(diff)
+
+    # ---- 输出日志 ----
+    for m in metric_names:
+        logging.info(f"{m}: {avg_eval_log[m]:.4f}")
+    for m in metric_names:
+        logging.info(
+            f"Jain's Fairness {m}: {jain_index[m]:.4f} | "
+            f"ΔJain({m}): {delta_jain[m]:+.5f} | "
+            f"CV({m}): {cv_index[m]:.4f} | "
+            f"Entropy({m}): {entropy_index[m]:.4f} | "
+            f"TSI({m}): {tsi_index[m]:.4f}"
+        )
+
+    for domain, metrics in eval_logs.items():
+        logging.info(
+            "%s: " % domain + "\t".join([f"{m}: {metrics[m]:.4f}" for m in metric_names])
+        )
+
 
     return avg_eval_log
 
@@ -57,7 +118,7 @@ def run_fl(clients, server, args):
                            args.optimizer, args.lr_decay,
                            patience=args.ld_patience, verbose=True)
         for round in range(1, args.epochs + 1):
-            arr = np.array([3, 1, 2, 0])
+            arr = np.array([2, 1, 3, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
             for c_id in range(4):
                 logging.info(clients[c_id].train_weight)
@@ -82,9 +143,9 @@ def run_fl(clients, server, args):
 
             topk_scores = server.attributor.dump_topk()
             logging.info(f"Normalized TracIn scores: {topk_scores}")
-
+            temp_d = dict(topk_scores)
             for c_id in tqdm(random_cids, ascii=True):
-                clients[c_id].train_weight=topk_scores[c_id][1]
+                clients[c_id].train_weight=temp_d[c_id]
 
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
@@ -110,6 +171,8 @@ def run_fl(clients, server, args):
                                for client in clients)
                 avg_eval_log = evaluation_logging(
                     eval_logs, round, weights, mode="valid")
+
+                #keeping_decreasing()
 
                 early_stopping(avg_eval_log, clients)
                 if early_stopping.early_stop:

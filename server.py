@@ -30,7 +30,7 @@ class ClientAttributor:
             return {cid: 0.0 for cid in scores_dict}
         return {cid: val / total for cid, val in exp_scores.items()}
 
-    def dump_topk(self, k=20, T=1500.0):
+    def dump_topk(self, k=20, T=1000.0):
         softmax_scores = self._softmax(self.scores, T)
         return sorted(softmax_scores.items(), key=lambda x: x[1], reverse=True)[:k]
 
@@ -48,7 +48,6 @@ class Server(object):
 
     def aggregate_params(self, clients, random_cids):
         num_branchs = len(self.global_params)
-        print(num_branchs)
         for branch_idx in range(num_branchs):
             client_params_sum = None
             for c_id in random_cids:
