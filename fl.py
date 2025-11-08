@@ -54,7 +54,7 @@ def run_fl(clients, server, args):
                            args.optimizer, args.lr_decay,
                            patience=args.ld_patience, verbose=True)
         for round in range(1, args.epochs + 1):
-            arr = np.array([3, 1, 2, 0])
+            arr = np.array([2, 1, 3, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
 
             # Train with these clients
