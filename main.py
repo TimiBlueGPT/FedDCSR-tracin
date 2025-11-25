@@ -36,7 +36,7 @@ def arg_parse():
                         default="log", help="directory of logs")
     parser.add_argument("--cuda", type=bool, default=torch.cuda.is_available())
     parser.add_argument("--gpu", type=str, default="0", help="GPU ID to use")
-    parser.add_argument("--epochs", type=int, default=60,
+    parser.add_argument("--epochs", type=int, default=15,
                         help="Number of total training iterations.")
     parser.add_argument("--local_epoch", type=int, default=3,
                         help="Number of local training epochs.")
@@ -66,7 +66,7 @@ def arg_parse():
                         help="Model ID under which to save models.")
     parser.add_argument("--do_eval", action="store_true")
     parser.add_argument("--es_patience", type=int,
-                        default=5, help="Early stop patience.")
+                        default=10, help="Early stop patience.")
     parser.add_argument("--ld_patience", type=int, default=1,
                         help="Learning rate decay patience.")
     parser.add_argument("--ckpt_interval", type=int, default=5,

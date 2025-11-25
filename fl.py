@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 from tqdm import tqdm
-from utils.train_utils import EarlyStopping, LRDecay
+from utils.train_utils import EarlyStopping, LRDecay, Return_best
 import numpy as np
 from utils.influence_utils import compute_influence_for_clients
 
@@ -117,9 +117,11 @@ def run_fl(clients, server, args):
         lr_decay = LRDecay(args.lr, args.decay_epoch,
                            args.optimizer, args.lr_decay,
                            patience=args.ld_patience, verbose=True)
+        return_best = Return_best()
         for round in range(1, args.epochs + 1):
             arr = np.array([2, 1, 3, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
+
             for c_id in range(4):
                 logging.info(clients[c_id].train_weight)
 
@@ -144,8 +146,8 @@ def run_fl(clients, server, args):
             topk_scores = server.attributor.dump_topk()
             logging.info(f"Normalized TracIn scores: {topk_scores}")
             temp_d = dict(topk_scores)
-            for c_id in tqdm(random_cids, ascii=True):
-                clients[c_id].train_weight=temp_d[c_id]
+            """for c_id in tqdm(random_cids, ascii=True):
+                clients[c_id].train_weight= clients[c_id].train_weight * 0.9 + temp_d[c_id] * 0.1"""
 
             if "Fed" in args.method:
                 server.aggregate_params(clients, random_cids)
@@ -172,15 +174,16 @@ def run_fl(clients, server, args):
                 avg_eval_log = evaluation_logging(
                     eval_logs, round, weights, mode="valid")
 
-                #keeping_decreasing()
 
-                early_stopping(avg_eval_log, clients)
+                early_stopping(avg_eval_log, clients, eval_logs)
                 if early_stopping.early_stop:
                     logging.info("Early stopping")
                     break
 
                 lr_decay(round, avg_eval_log, clients)
-
+                """for c_id in tqdm(random_cids, ascii=True):
+                    return_best(eval_logs[clients[c_id].domain],clients[c_id])"""
+                #return_best(eval_logs[clients[2].domain], clients[2])
         load_and_eval_model(n_clients, clients, args)
         if args.method == "VeriFRL_Fed" and args.compute_influence:
             compute_influence_for_clients(clients, args)

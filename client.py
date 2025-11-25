@@ -53,6 +53,7 @@ class Client:
         self._pre_train_state = None
         self._cached_eval_batch = None
 
+
     def train_epoch(self, round, args, global_params=None):
         self.trainer.model.train()
         self._pre_train_state = copy.deepcopy(self.trainer.model.state_dict())
@@ -66,7 +67,7 @@ class Client:
                         global_params=global_params)
                 else:
                     batch_loss = self.trainer.train_batch(
-                        sessions, self.adj, self.num_items, args)
+                        sessions, self.adj, self.num_items, args, global_params=global_params)
                 loss += batch_loss
                 step += 1
 
@@ -302,8 +303,13 @@ class Client:
             self._method_ckpt_path, "client%d.pt" % self.c_id)
         params = self.trainer.model.state_dict()
         try:
-            torch.save(params, ckpt_filename)
+            torch.save({
+                "model": params,
+                "optimizer": self.trainer.optimizer.state_dict(),
+            },ckpt_filename)
             print("Model saved to {}".format(ckpt_filename))
+            first_tensor = next(iter(params.values()))
+            print("Checkpoint tensor mean:", first_tensor.mean().item())
         except IOError:
             print("[ Warning: Saving failed... continuing anyway. ]")
 
@@ -312,11 +318,37 @@ class Client:
             self._method_ckpt_path, "client%d.pt" % self.c_id)
         try:
             checkpoint = torch.load(ckpt_filename)
+            first_tensor = next(iter(checkpoint["model"].values()))
+            print("Checkpoint tensor mean:", first_tensor.mean().item())
         except IOError:
             print("[ Fail: Cannot load model from {}. ]".format(ckpt_filename))
             exit(1)
         if self.trainer.model is not None:
-            self.trainer.model.load_state_dict(checkpoint)
+            current_state = self.trainer.model.state_dict()
+        
+            # === Soft Update Parameters ===
+            new_state = {}
+            alpha = 0.1
+            for k in current_state.keys():
+                cur = current_state[k]
+                best = checkpoint["model"][k]
+        
+                # Soft restore:  θ ← (1-α)*θ_cur + α*θ_best
+                new_state[k] = (1 - alpha) * cur + alpha * best
+        
+            # Load blended parameters
+            self.trainer.model.load_state_dict(new_state)
+            print(f"[Soft Rollback] α = {alpha:.2f}, model parameters blended.")
+            """self.trainer.optimizer = type(self.trainer.optimizer)(
+                self.trainer.model.parameters(),
+                **self.trainer.optimizer.defaults
+            )"""
+        """if self.trainer.model is not None:
+            self.trainer.model.load_state_dict(checkpoint["model"])
+        if checkpoint.get("optimizer") and hasattr(self.trainer, "optimizer"):
+            self.trainer.optimizer.load_state_dict(checkpoint["optimizer"])
+            print("Optimizer state restored.")"""
+
 
     def get_round_checkpoint_dir(self, round_idx):
         return os.path.join(self._method_ckpt_path,

@@ -2,6 +2,8 @@
 import logging
 import torch
 from torch.optim.optimizer import Optimizer
+import hashlib
+
 
 
 
@@ -130,6 +132,7 @@ class EarlyStopping:
         self.best_score = None
         self.early_stop = False
         self.delta = delta
+        self.clothing_best_score = None
 
     def is_increase(self, score):
         if score["MRR"] > self.best_score["MRR"] + self.delta:
@@ -137,10 +140,11 @@ class EarlyStopping:
         else:
             return False
 
-    def __call__(self, score, clients):
+    def __call__(self, score, clients, logs):
         if self.best_score is None:
             self.best_score = score
-            self.save_checkpoint(clients)
+            self.save_checkpoint(clients,logs)
+            self.clothing_best_score = logs[clients[2].domain]["HR @10"]
         elif not self.is_increase(score):
             self.counter += 1
             logging.info(
@@ -150,14 +154,25 @@ class EarlyStopping:
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(clients)
+            self.save_checkpoint(clients, logs)
+            self.clothing_best_score = logs[clients[2].domain]["HR @10"]
             self.counter = 0
 
-    def save_checkpoint(self, clients):
+    def save_checkpoint(self, clients, logs):
         if self.verbose:
             logging.info("Validation score increased.  Saving model ...")
+        """for client in clients:
+            client.save_params()"""
         for client in clients:
-            client.save_params()
+            if client.domain == "Clothing":
+                if self.clothing_best_score is not None:
+                    print("clothing_best_score:",self.clothing_best_score,"\t current_score:",logs[clients[2].domain]["HR @10"])
+                if self.clothing_best_score is None or logs[clients[2].domain]["HR @10"] > self.clothing_best_score:
+                    client.save_params()
+                else:
+                    continue
+            else:
+                client.save_params()
 
 
 class LRDecay:
@@ -197,3 +212,40 @@ class LRDecay:
             else:
                 self.counter = 0
         self.latest_score = score
+
+
+class Return_best:
+
+    def __init__(self):
+        self.counter = 0
+        self.best_score = None
+        self.delta = 0
+
+    def is_increase(self, score):
+        if self.best_score["HR @10"] < score["HR @10"] + self.delta:
+            print("best_score:", self.best_score["HR @10"],"\t","current_score:",score["HR @10"])
+            return True
+        else:
+            return False
+
+    def get_param_hash(self,model):
+        h = hashlib.md5()
+        for p in model.parameters():
+            h.update(p.detach().cpu().numpy().tobytes())
+        return h.hexdigest()
+
+    def __call__(self, score, client):
+        if self.best_score:
+            if not self.is_increase(score):
+                self.counter += 1
+                if self.counter > 1:
+                    logging.info(f"{client.domain} index keeping decreasing, return to best checkpoint")
+                    print("Before load:", self.get_param_hash(client.trainer.model))
+                    client.load_params()
+                    print("After load:", self.get_param_hash(client.trainer.model))
+                    self.latest_score = score
+                    self.counter = 0
+            else:
+                self.best_score = score
+        self.best_score = score
+
