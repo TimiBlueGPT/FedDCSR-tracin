@@ -56,8 +56,8 @@ class ModelTrainer(Trainer):
             reduction="none").to(self.device)
         self.cs_criterion = nn.CrossEntropyLoss(
             reduction="none").to(self.device)
-        """self.cl_criterion = NCELoss(
-            temperature=args.temperature).to(self.device)"""
+        self.cl_criterion = NCELoss(
+            temperature=args.temperature).to(self.device)
         self.jsd_criterion = JSDLoss().to(self.device)
         self.hinge_criterion = HingeLoss(margin=0.3).to(self.device)
 
@@ -228,7 +228,7 @@ class ModelTrainer(Trainer):
 
         user_representation1 = z_e[:, -1, :]
         user_representation2 = aug_z_e[:, -1, :]
-        contrastive_loss = self.cs_criterion(
+        contrastive_loss = self.cl_criterion(
             user_representation1, user_representation2)
         contrastive_loss = contrastive_loss.mean()
 
