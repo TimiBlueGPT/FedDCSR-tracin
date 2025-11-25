@@ -96,40 +96,7 @@ class ModelTrainer(Trainer):
                                             z_e, neg_z_e, aug_z_e, ground_mask,
                                             num_items, self.step)
 
-            z_e_pooled = z_e.detach().mean(dim=1)
-            if diffusion:
-                diffusion.df_step += 1
-                if diffusion.df_step %10 == 0:
-                    print(diffusion.df_step)
-                diff_loss = diffusion.p_losses(z_e_pooled.detach())
-                # detach: 不让 diffusion 的梯度回到 main model
 
-
-                # 你可以根据需要把 diff_loss 打印或加权加入主 loss:
-                lambda_diff = 0.001
-                loss = loss + lambda_diff * diff_loss
-
-                if True:
-                    with torch.no_grad():
-                        #生成一个 fake latent
-                        #fake_z_e_single = diffusion.sample(batch_size=1)  # [1,768]
-
-                        # 扩展到整个 batch 的大小
-                        #fake_z_e = fake_z_e_single.repeat(z_e_pooled.size(0), 1)  # [B,768]
-                        fake_z_e = diffusion.sample(batch_size=z_e_pooled.size(0))  # [B,768]
-                    dist = torch.mean((fake_z_e - z_e_pooled.detach()) ** 2).item()
-                    #print("latent distance:", dist)
-                    #print(fake_z_e.var(dim=0).mean())
-                    align_loss = F.mse_loss(fake_z_e, z_e_pooled.detach())
-                    loss = loss + 0.001 * align_loss
-
-                    fake_out = self.model.linear(fake_z_e)
-                    fake_pad = self.model.linear_pad(fake_z_e)
-                    fake_logits = torch.cat([fake_out, fake_pad], dim=-1)
-
-                    # 一个轻量的 dummy consistency loss
-                    pseudo_loss = torch.mean(fake_logits ** 2) * 0.001
-                    loss = loss + pseudo_loss
         elif "VGSAN" in self.method:
             seq, ground, ground_mask = sessions
             result, mu, logvar = self.model(seq)
@@ -261,7 +228,7 @@ class ModelTrainer(Trainer):
 
         user_representation1 = z_e[:, -1, :]
         user_representation2 = aug_z_e[:, -1, :]
-        contrastive_loss = self.cl_criterion(
+        contrastive_loss = self.cs_criterion(
             user_representation1, user_representation2)
         contrastive_loss = contrastive_loss.mean()
 
