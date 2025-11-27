@@ -4,7 +4,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.vgsan.disen_vgsan_model import DisenVGSAN
-from models.vgsan import config
+from models.vgsan import config, causal_model
+from models.vgsan.latent_diffusion import FullModel
+from models.vgsan.latent_diffusion import DiffusionModel
 from models.vgsan.vgsan_model import VGSAN
 from models.sasrec.sasrec_model import SASRec
 from models.vsan.vsan_model import VSAN
@@ -13,6 +15,7 @@ from models.cl4srec.cl4srec_model import CL4SRec
 from models.duorec.duorec_model import DuoRec
 from utils import train_utils
 from losses import NCELoss, HingeLoss, JSDLoss, Discriminator, priorKL
+from models.vgsan.causal_model import SimpleAdditiveModule
 
 
 class Trainer(object):
@@ -35,7 +38,13 @@ class ModelTrainer(Trainer):
         self.method = args.method
         self.device = "cuda:%s" % args.gpu if args.cuda else "cpu"
         if self.method == "VeriFRL_Fed":
-            self.model = DisenVGSAN(num_items, args).to(self.device)
+            self.main_model = DisenVGSAN(num_items, args).to(self.device)
+            self.diffusion_model = DiffusionModel(latent_dim=config.hidden_size).to(self.device)
+            self.diffusion_optimizer = torch.optim.Adam(
+                self.diffusion_model.parameters(), lr=1e-4
+            )
+            self.total_model = FullModel(diffusion_model=self.diffusion_model,main_model=self.main_model)
+            #self.causal_model = SimpleAdditiveModule().to(self.device)
             self.z_s, self.z_g = [None], [None]
             self.discri = Discriminator(
                 config.hidden_size, max_seq_len).to(self.device)
@@ -62,7 +71,7 @@ class ModelTrainer(Trainer):
         self.hinge_criterion = HingeLoss(margin=0.3).to(self.device)
 
         if args.method == "VeriFRL_Fed":
-            self.params = list(self.model.parameters()) + \
+            self.params = list(self.main_model.parameters()) + \
                 list(self.discri.parameters())
         else:
             self.params = list(self.model.parameters())
@@ -70,7 +79,7 @@ class ModelTrainer(Trainer):
             args.optimizer, self.params, args.lr)
         self.step = 0
 
-    def compute_loss(self, sessions, adj, num_items, args, diffusion=None, diffusion_optimizer=None, global_params=None,
+    def compute_loss(self, sessions, adj, num_items, args, global_params=None,train_diffusion=False,
                          include_prox=True, update_state=True):
 
 
@@ -83,10 +92,10 @@ class ModelTrainer(Trainer):
 
             seq, ground, ground_mask, js_neg_seqs, contrast_aug_seqs = sessions
             result, result_exclusive, mu_s, logvar_s, z_s, mu_e, \
-                logvar_e, z_e, neg_z_e, aug_z_e = self.model(
+                logvar_e, z_e, neg_z_e, aug_z_e = self.total_model(
                     seq,
                 neg_seqs=js_neg_seqs,
-                aug_seqs=contrast_aug_seqs)
+                aug_seqs=contrast_aug_seqs,train_diffusion=train_diffusion)
             z_s = z_s * ground_mask.unsqueeze(-1)
             if update_state:
                 self.z_s[0] = z_s
@@ -165,15 +174,43 @@ class ModelTrainer(Trainer):
 
         return loss
 
-    def train_batch(self, sessions, adj, num_items, args, diffusion=None, diffusion_optimizer=None, global_params=None):
+    def train_batch(self, sessions, adj, num_items, args, global_params=None,train_diffusion=False):
         self.optimizer.zero_grad()
         loss = self.compute_loss(sessions, adj, num_items, args,
                                  global_params=global_params,
-                                 include_prox=True, update_state=True)
+                                 include_prox=True, update_state=True,train_diffusion=False)
         loss.backward()
         self.optimizer.step()
         self.step += 1
         return loss.item()
+
+    def train_diffusion_batch(self, sessions, adj, num_items, args):
+        """
+        只训练 diffusion：
+        - 主模型参数已经在 __init__ 或外面被 requires_grad=False 冻结
+        - optimizer 用 self.diffusion_optimizer（之前已经创建）
+        """
+        # 确保图卷积已计算（因为 get_z_e 里要用 item_graph_embs_e）
+        if (self.method == "VeriFRL_Fed") or ("VGSAN" in self.method):
+            self.main_model.graph_convolution(adj)  # 注意这里用 main
+
+        sessions = [torch.LongTensor(x).to(self.device) for x in sessions]
+        # VeriFRL_Fed 的输入格式你前面写过：
+        # seq, ground, ground_mask, js_neg_seqs, contrast_aug_seqs = sessions
+        seq = sessions[0]  # 只需要 seq 即可
+
+        self.diffusion_optimizer.zero_grad()
+
+        # 调 FullModel 的 diffusion 分支
+        diff_loss = self.total_model(
+            seqs=seq,
+            train_diffusion=True  # 触发 FullModel 里 diffusion 路径
+        )
+
+        diff_loss.backward()
+        self.diffusion_optimizer.step()
+
+        return diff_loss.item()
 
     def disen_vgsan_loss_fn(self, result, result_exclusive, mu_s, logvar_s,
                             mu_e, logvar_e, ground, z_s, z_g, z_e, neg_z_e,
@@ -384,7 +421,7 @@ class ModelTrainer(Trainer):
     def test_batch(self, sessions):
         sessions = [torch.LongTensor(x).to(self.device) for x in sessions]
         seq, ground_truth, neg_list = sessions
-        result = self.model(seq)
+        result = self.main_model(seq)
 
         pred = []
         for id in range(len(result)):

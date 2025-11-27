@@ -15,7 +15,7 @@ class Client:
         self.domain = train_dataset.domain
         self.max_seq_len = args.max_seq_len
         self.trainer = model_fn(args, self.num_items, self.max_seq_len)
-        self.model = self.trainer.model
+        self.model = self.trainer
         self.method = args.method
         self.checkpoint_dir = args.checkpoint_dir
         self.model_id = args.id if len(args.id) > 1 else "0" + args.id
@@ -53,8 +53,18 @@ class Client:
         self._pre_train_state = None
         self._cached_eval_batch = None
 
+    def train_diffusion_epoch(self, round, args):
+        self.model.total_model.train()  # FullModel
 
-    def train_epoch(self, round, args, global_params=None):
+        # 本地数据 loader
+        for _, sessions in self.train_dataloader:  # 你原来怎么写的就怎么来
+            # diffusion 不需要 ground、neg 等所有东西，只需要 seq（以及 adj 做 graph_convolution）
+            self.trainer.train_diffusion_batch(
+                sessions, self.adj, self.num_items, args
+            )
+
+
+    def train_epoch(self, round, args, global_params=None,train_diffusion=False):
         self.trainer.model.train()
         self._pre_train_state = copy.deepcopy(self.trainer.model.state_dict())
         for _ in range(args.local_epoch):
@@ -64,10 +74,10 @@ class Client:
                 if ("Fed" in args.method) and args.mu:
                     batch_loss = self.trainer.train_batch(
                         sessions, self.adj, self.num_items, args,
-                        global_params=global_params)
+                        global_params=global_params,train_diffusion=train_diffusion)
                 else:
                     batch_loss = self.trainer.train_batch(
-                        sessions, self.adj, self.num_items, args, global_params=global_params)
+                        sessions, self.adj, self.num_items, args, global_params=global_params,train_diffusion=train_diffusion)
                 loss += batch_loss
                 step += 1
 
@@ -193,9 +203,9 @@ class Client:
         elif mode == "test":
             dataloader = self.test_dataloader
 
-        self.trainer.model.eval()
+        self.trainer.total_model.eval()
         if (self.method == "VeriFRL_Fed") or ("VGSAN" in self.method):
-            self.trainer.model.graph_convolution(self.adj)
+            self.trainer.main_model.graph_convolution(self.adj)
         pred = []
         for _, sessions in dataloader:
             predictions = self.trainer.test_batch(sessions)
@@ -253,7 +263,7 @@ class Client:
 
     def get_params(self):
         if self.method == "VeriFRL_Fed":
-            return copy.deepcopy([self.model.encoder_s.state_dict()])
+            return copy.deepcopy([self.model.main_model.encoder_s.state_dict()])
         elif "VGSAN" in self.method:
             return copy.deepcopy([self.model.encoder.state_dict()])
         elif "SASRec" in self.method:
@@ -301,12 +311,13 @@ class Client:
     def save_params(self):
         ckpt_filename = os.path.join(
             self._method_ckpt_path, "client%d.pt" % self.c_id)
-        params = self.trainer.model.state_dict()
+        params = self.trainer.total_model.state_dict()
         try:
-            torch.save({
+            """torch.save({
                 "model": params,
                 "optimizer": self.trainer.optimizer.state_dict(),
-            },ckpt_filename)
+            },ckpt_filename)"""
+            torch.save(params, ckpt_filename)
             print("Model saved to {}".format(ckpt_filename))
             first_tensor = next(iter(params.values()))
             print("Checkpoint tensor mean:", first_tensor.mean().item())
@@ -318,12 +329,14 @@ class Client:
             self._method_ckpt_path, "client%d.pt" % self.c_id)
         try:
             checkpoint = torch.load(ckpt_filename)
-            first_tensor = next(iter(checkpoint["model"].values()))
-            print("Checkpoint tensor mean:", first_tensor.mean().item())
+            #first_tensor = next(iter(checkpoint["main"].values()))
+            #print(self.c_id,"Checkpoint tensor mean:", first_tensor.mean().item())
         except IOError:
             print("[ Fail: Cannot load model from {}. ]".format(ckpt_filename))
             exit(1)
-        if self.trainer.model is not None:
+        if self.trainer.main_model is not None:
+            self.trainer.total_model.load_state_dict(checkpoint)
+        """if self.trainer.model is not None:
             current_state = self.trainer.model.state_dict()
         
             # === Soft Update Parameters ===
@@ -339,13 +352,14 @@ class Client:
             # Load blended parameters
             self.trainer.model.load_state_dict(new_state)
             print(f"[Soft Rollback] α = {alpha:.2f}, model parameters blended.")
-            """self.trainer.optimizer = type(self.trainer.optimizer)(
+            
+            self.trainer.optimizer = type(self.trainer.optimizer)(
                 self.trainer.model.parameters(),
                 **self.trainer.optimizer.defaults
             )"""
         """if self.trainer.model is not None:
-            self.trainer.model.load_state_dict(checkpoint["model"])
-        if checkpoint.get("optimizer") and hasattr(self.trainer, "optimizer"):
+            self.trainer.model.load_state_dict(checkpoint["model"])"""
+        """if checkpoint.get("optimizer") and hasattr(self.trainer, "optimizer"):
             self.trainer.optimizer.load_state_dict(checkpoint["optimizer"])
             print("Optimizer state restored.")"""
 
@@ -358,7 +372,7 @@ class Client:
         round_dir = self.get_round_checkpoint_dir(round_idx)
         ensure_dir(round_dir, verbose=False)
         ckpt_filename = os.path.join(round_dir, "client%d.pt" % self.c_id)
-        params = self.trainer.model.state_dict()
+        params = self.trainer.total_model.state_dict()
         try:
             torch.save(params, ckpt_filename)
             logging.info("Saved round %d checkpoint for client %d to %s",
@@ -376,7 +390,7 @@ class Client:
                             ckpt_path)
             return False
         if self.trainer.model is not None:
-            self.trainer.model.load_state_dict(checkpoint)
+            self.trainer.total_model.load_state_dict(checkpoint)
         return True
 
     def get_method_checkpoint_path(self):

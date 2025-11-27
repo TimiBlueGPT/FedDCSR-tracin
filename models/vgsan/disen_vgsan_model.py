@@ -102,7 +102,7 @@ class DisenVGSAN(nn.Module):
         seq_embeddings = self.dropout(seq_embeddings)
         return seq_embeddings
 
-    def forward(self, seqs, neg_seqs=None, aug_seqs=None):
+    def forward(self, seqs, neg_seqs=None, aug_seqs=None,train_diffusion=False):
         seqs_emb_s = self.my_index_select(
             self.item_graph_embs_s, seqs) + self.item_emb_s(seqs)
         seqs_emb_e = self.my_index_select(
@@ -161,3 +161,28 @@ class DisenVGSAN(nn.Module):
         else:
             res = mu
         return res
+
+    """def get_z_e(self, seqs):
+        seqs_emb_e = self.my_index_select(self.item_graph_embs_e, seqs) + self.item_emb_e(seqs)
+        seqs_emb_e = seqs_emb_e * self.item_emb_e.embedding_dim ** 0.5
+        seqs_emb_e = self.add_position_embedding_e(seqs, seqs_emb_e)
+
+        mu_e, logvar_e = self.encoder_e(seqs_emb_e, seqs)
+        z_e = self.reparameterization(mu_e, logvar_e)
+        return z_e"""
+
+    def get_z_e(self, seqs):
+        """
+        只计算 z_e，不参与重建、不参与对比、不取 neg/aug
+        用于 diffusion 第二阶段训练
+        """
+        # e-embedding
+        seqs_emb_e = self.my_index_select(self.item_graph_embs_e, seqs) + self.item_emb_e(seqs)
+        seqs_emb_e = seqs_emb_e * self.item_emb_e.embedding_dim ** 0.5
+        seqs_emb_e = self.add_position_embedding_e(seqs, seqs_emb_e)
+
+        # VAE encoder_e
+        mu_e, logvar_e = self.encoder_e(seqs_emb_e, seqs)
+        z_e = self.reparameterization(mu_e, logvar_e)
+
+        return z_e

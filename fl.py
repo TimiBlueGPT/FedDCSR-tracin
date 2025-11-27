@@ -121,12 +121,16 @@ def run_fl(clients, server, args):
         for round in range(1, args.epochs + 1):
             arr = np.array([2, 1, 3, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
-
+            if round == 1:
+                for c_id in random_cids:
+                    clients[c_id].load_params()
+                #load_and_eval_model(n_clients, clients, args)
             for c_id in range(4):
                 logging.info(clients[c_id].train_weight)
 
             for c_id in tqdm(arr, ascii=True):
                 if "Fed" in args.method:
+
 
                     clients[c_id].set_global_params(server.get_global_params())
                     if args.method == "VeriFRL_Fed":
@@ -134,7 +138,9 @@ def run_fl(clients, server, args):
 
 
                 clients[c_id].train_epoch(
-                    round, args, global_params=server.global_params)
+                    round, args, global_params=server.global_params,train_diffusion=False)
+
+
                 """
                 if hasattr(server, "add_eval_score"):
                     server.add_eval_score(c_id, clients[c_id].latest_eval_score)
@@ -187,3 +193,49 @@ def run_fl(clients, server, args):
         load_and_eval_model(n_clients, clients, args)
         if args.method == "VeriFRL_Fed" and args.compute_influence:
             compute_influence_for_clients(clients, args)
+
+def run_fl_diffusion(clients, server, args):
+    """
+    第二阶段：只训练 diffusion 模块的联邦循环
+    假设：此时已经有第一阶段训练好的主模型参数和 server 全局参数
+    """
+
+    n_clients = len(clients)
+
+    # 1. 先加载第一阶段的参数（主模型）
+    #    一般你之前已有 load_and_eval_model 之类的逻辑，
+    #    这里只要保证 client.trainer.model/main_model 以及 server.global_params 对齐即可
+    for c_id in range(n_clients):
+        clients[c_id].load_params()  # 这个就是你原来用来加载本地 ckpt 的函数
+
+    # 2. 冻结主模型，解冻 diffusion（可以放在 client 或 trainer 里）
+    for c_id in range(n_clients):
+        trainer = clients[c_id].trainer
+        # 冻结主模型
+        for p in trainer.main_model.parameters():
+            p.requires_grad = False
+        # 解冻 diffusion
+        for p in trainer.diffusion_model.parameters():
+            p.requires_grad = True
+
+    # 3. 开始 diffusion 的“联邦式”训练循环
+    for round in range(1, args.epochs + 1):
+        logging.info(f"[Diffusion Phase] Round {round}/{args.epochs}")
+
+        random_cids = server.choose_clients(n_clients, args.frac)
+
+        for c_id in random_cids:
+            # 如果你希望 diffusion 也做联邦聚合，可以在 server 里加 get/set_diffusion_params
+            # 这里只展示“每个 client 本地独立训练 diffusion”的版本
+            clients[c_id].train_diffusion_epoch(round, args)
+
+        # 如果你希望联邦式训练 diffusion，这里可以加：
+        # server.aggregate_diffusion_params(clients, random_cids)
+
+        # （可选）定期保存 diffusion ckpt
+        if args.ckpt_interval and round % args.ckpt_interval == 0:
+            for c_id in range(n_clients):
+                clients[c_id].save_round_checkpoint(round)
+
+    # 4. 训练完 diffusion 之后，你可以再做一次 eval 或保存最终模型
+    load_and_eval_model(n_clients, clients, args)

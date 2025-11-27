@@ -11,7 +11,7 @@ from client import Client
 from server import Server
 from utils.data_utils import load_dataset, init_clients_weight
 from utils.io_utils import save_config, ensure_dir
-from fl import run_fl
+from fl import run_fl, run_fl_diffusion
 
 
 def arg_parse():
@@ -36,7 +36,7 @@ def arg_parse():
                         default="log", help="directory of logs")
     parser.add_argument("--cuda", type=bool, default=torch.cuda.is_available())
     parser.add_argument("--gpu", type=str, default="0", help="GPU ID to use")
-    parser.add_argument("--epochs", type=int, default=15,
+    parser.add_argument("--epochs", type=int, default=12,
                         help="Number of total training iterations.")
     parser.add_argument("--local_epoch", type=int, default=3,
                         help="Number of local training epochs.")
@@ -53,7 +53,7 @@ def arg_parse():
                         help="Decay learning rate after this epoch.")
     parser.add_argument("--batch_size", type=int,
                         default=512, help="Training batch size.")
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--seed", type=int, default=200)
     parser.add_argument("--eval_interval", type=int,
                         default=1, help="Interval of evalution")
     parser.add_argument("--frac", type=float, default=1,
@@ -158,8 +158,8 @@ def main():
     save_config(args)
 
     server = Server(args, clients[0].get_params())
-
-    run_fl(clients, server, args)
+    run_fl_diffusion(clients, server, args)
+    #run_fl(clients, server, args)
 
 
 if __name__ == "__main__":
