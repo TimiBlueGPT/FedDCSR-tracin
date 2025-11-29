@@ -65,8 +65,8 @@ class Client:
 
 
     def train_epoch(self, round, args, global_params=None,train_diffusion=False):
-        self.trainer.model.train()
-        self._pre_train_state = copy.deepcopy(self.trainer.model.state_dict())
+        self.trainer.main_model.train()
+        self._pre_train_state = copy.deepcopy(self.trainer.main_model.state_dict())
         for _ in range(args.local_epoch):
             loss = 0
             step = 0
@@ -83,7 +83,7 @@ class Client:
 
             gc.collect()
         delta_vector = self._gather_shared_param_deltas_vector()
-        post_train_state = copy.deepcopy(self.trainer.model.state_dict())
+        post_train_state = copy.deepcopy(self.trainer.main_model.state_dict())
         self.latest_eval_score = self._compute_eval_tracin_score(
             delta_vector, post_train_state)
         logging.info("Epoch {}/{} - client {} -  Training Loss: {:.3f}".format(
@@ -93,7 +93,7 @@ class Client:
     def _get_shared_modules(self):
         modules = []
         if self.method == "VeriFRL_Fed":
-            modules.append(self.model.encoder_s)
+            modules.append(self.trainer.main_model.encoder_s)
         elif "VGSAN" in self.method:
             modules.append(self.model.encoder)
         elif "SASRec" in self.method:
@@ -173,9 +173,9 @@ class Client:
         saved_z_s = None
         if self.method == "VeriFRL_Fed" and self.z_s[0] is not None:
             saved_z_s = copy.deepcopy(self.z_s[0].detach().clone())
-        prev_training_mode = self.trainer.model.training
-        self.trainer.model.load_state_dict(self._pre_train_state)
-        self.trainer.model.train()
+        prev_training_mode = self.trainer.main_model.training
+        self.trainer.main_model.load_state_dict(self._pre_train_state)
+        self.trainer.main_model.train()
         self.trainer.optimizer.zero_grad()
         loss = self.trainer.compute_loss(
             eval_batch, self.adjs_tracin, self.num_items, self.args,
@@ -184,13 +184,13 @@ class Client:
         loss.backward()
         grad_vector = self._gather_shared_grad_vector()
         self.trainer.optimizer.zero_grad()
-        self.trainer.model.load_state_dict(post_train_state)
+        self.trainer.main_model.load_state_dict(post_train_state)
         if saved_z_s is not None:
             self.z_s[0] = saved_z_s
         if prev_training_mode:
-            self.trainer.model.train()
+            self.trainer.main_model.train()
         else:
-            self.trainer.model.eval()
+            self.trainer.main_model.eval()
         if grad_vector is None or grad_vector.numel() == 0:
             return None
         g_c_vector = -delta_vector / lr
@@ -288,7 +288,7 @@ class Client:
                                 "FedContrastVAE", "FedCL4SRec", "FedDuoRec"])
         self.init_global_params = copy.deepcopy(global_params)
         if self.method == "VeriFRL_Fed":
-            self.model.encoder_s.load_state_dict(global_params[0])
+            self.trainer.main_model.encoder_s.load_state_dict(global_params[0])
         elif self.method == "FedVGSAN":
             self.model.encoder.load_state_dict(global_params[0])
         elif self.method == "FedSASRec":

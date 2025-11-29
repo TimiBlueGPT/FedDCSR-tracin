@@ -40,6 +40,7 @@ class ModelTrainer(Trainer):
         if self.method == "VeriFRL_Fed":
             self.main_model = DisenVGSAN(num_items, args).to(self.device)
             self.diffusion_model = DiffusionModel(latent_dim=config.hidden_size).to(self.device)
+            self.main_model.diffusion = self.diffusion_model
             self.diffusion_optimizer = torch.optim.Adam(
                 self.diffusion_model.parameters(), lr=1e-4
             )
@@ -79,12 +80,48 @@ class ModelTrainer(Trainer):
             args.optimizer, self.params, args.lr)
         self.step = 0
 
+
+
+
+    def enable_stage3(self):
+        def freeze_params(module):
+            for p in module.parameters():
+                p.requires_grad = False
+        # 启动 diffusion augmentation
+        self.main_model.use_diffusion_aug = True
+        self.main_model.diffusion = self.diffusion_model
+
+
+        # 解冻主模型参数（准备 fine-tune）
+        for p in self.main_model.parameters():
+            p.requires_grad = True
+
+        # 冻结 z_s、z_e 所用的 encoder
+        freeze_params(self.main_model.encoder_s)
+        freeze_params(self.main_model.encoder_e)
+
+        # 冻结 item embedding
+        freeze_params(self.main_model.item_emb_s)
+        freeze_params(self.main_model.item_emb_e)
+        freeze_params(self.main_model.pos_emb_e)
+        freeze_params(self.main_model.pos_emb_s)
+        freeze_params(self.main_model.GNN_encoder_e)
+        freeze_params(self.main_model.GNN_encoder_s)
+
+        # 冻结 diffusion（不再更新）
+        for p in self.diffusion_model.parameters():
+            p.requires_grad = False
+
+        # 整个训练只用主模型 optimizer
+
+
+
     def compute_loss(self, sessions, adj, num_items, args, global_params=None,train_diffusion=False,
                          include_prox=True, update_state=True):
 
 
         if (self.method == "VeriFRL_Fed") or ("VGSAN" in self.method):
-            self.model.graph_convolution(adj)
+            self.main_model.graph_convolution(adj)
 
         sessions = [torch.LongTensor(x).to(self.device) for x in sessions]
 
@@ -206,7 +243,7 @@ class ModelTrainer(Trainer):
             seqs=seq,
             train_diffusion=True  # 触发 FullModel 里 diffusion 路径
         )
-
+        print("diffusion loss: ", diff_loss.item())
         diff_loss.backward()
         self.diffusion_optimizer.step()
 

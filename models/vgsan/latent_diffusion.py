@@ -39,21 +39,31 @@ class EpsTransformer(nn.Module):
         )
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=2)
 
-        # 把时间 embedding 加进去
+        # 时间 embedding
         self.time_mlp = nn.Linear(hidden, hidden)
+
+        # 条件 embedding：从 z_e 条件注入信息
+        self.cond_mlp = nn.Linear(hidden, hidden)
 
         self.out = nn.Linear(hidden, hidden)
 
-    def forward(self, x, t_emb):
+    def forward(self, x, t_emb, cond):
         """
-        x: [B, L, D]
-        t_emb: [B, D]
+        x    : [B, L, D]  当前 noisy latent
+        t_emb: [B, D]     时间步 embedding
+        cond : [B, L, D]  条件 z_e，通过 q_sample(t) 得到
         """
-        # 扩展时间 embedding 到序列长度
+        # 扩展 t
         t_expand = t_emb.unsqueeze(1).repeat(1, x.size(1), 1)
-        h = x + self.time_mlp(t_expand)
+
+        # 条件注入
+        cond_proj = self.cond_mlp(cond)
+
+        # 有条件的输入
+        h = x + self.time_mlp(t_expand) + cond_proj
         h = self.transformer(h)
         return self.out(h)
+
 
 
 # ---------------------------------------
@@ -92,11 +102,12 @@ class DiffusionModel(nn.Module):
     # 训练 loss：预测噪声 ε
     def p_losses(self, x_0):
         """
-        x_0: [B, L, D]
+        x_0 = 原始 z_e  [B, L, D]
         """
         B = x_0.size(0)
         device = x_0.device
 
+        # 随机时间步
         t = torch.randint(0, self.time_steps, (B,), device=device)
 
         noise = torch.randn_like(x_0)
@@ -104,25 +115,34 @@ class DiffusionModel(nn.Module):
 
         t_emb = self.time_embed(t)
 
-        pred_noise = self.eps_model(x_noisy, t_emb)
+        # 把 x_0 作为条件 cond 输入 eps_model
+        pred_noise = self.eps_model(x_noisy, t_emb, cond=x_0)
 
         loss = F.mse_loss(pred_noise, noise)
         return loss
 
     # 采样（第三阶段增强使用）
     @torch.no_grad()
-    def sample(self, x_shape):
+    def sample(self, z_e, T=None):
         """
-        输入 z_e 的 shape，用 DDPM reverse 采样
+        z_e: [B, L, D] 原始 latent（条件）
+        T : 开始的噪声步，一般用最大步 self.time_steps-1
         """
-        B, L, D = x_shape
-        x = torch.randn(B, L, D).to(self.betas.device)
+        B, L, D = z_e.shape
+        device = z_e.device
 
-        for i in reversed(range(self.time_steps)):
-            t = torch.full((B,), i, device=x.device)
+        if T is None:
+            T = self.time_steps - 1
+
+        # 从加噪的 z_e 开始，而不是随机噪声
+        t0 = torch.full((B,), T, device=device)
+        x = self.q_sample(z_e, t0)  # x_T
+
+        for i in reversed(range(T + 1)):
+            t = torch.full((B,), i, device=device)
             t_emb = self.time_embed(t)
 
-            eps = self.eps_model(x, t_emb)
+            eps = self.eps_model(x, t_emb, cond=z_e)
 
             alpha = self.alphas[i]
             alpha_cp = self.alphas_cumprod[i]
@@ -134,7 +154,7 @@ class DiffusionModel(nn.Module):
                 noise = torch.zeros_like(x)
 
             x = (1 / alpha.sqrt()) * (
-                x - (beta / (1 - alpha_cp).sqrt()) * eps
+                    x - (beta / (1 - alpha_cp).sqrt()) * eps
             ) + beta.sqrt() * noise
 
         return x

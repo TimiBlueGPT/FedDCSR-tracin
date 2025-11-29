@@ -31,6 +31,8 @@ class Decoder(nn.Module):
 class DisenVGSAN(nn.Module):
     def __init__(self, num_items, args):
         super(DisenVGSAN, self).__init__()
+        self.use_diffusion_aug = False  # 默认阶段一不增强
+        self.diffusion = None  # 之后在 trainer 中注入
         self.device = "cuda:%s" % args.gpu if args.cuda else "cpu"
 
         self.item_emb_s = nn.Embedding(
@@ -102,7 +104,7 @@ class DisenVGSAN(nn.Module):
         seq_embeddings = self.dropout(seq_embeddings)
         return seq_embeddings
 
-    def forward(self, seqs, neg_seqs=None, aug_seqs=None,train_diffusion=False):
+    def forward(self, seqs, neg_seqs=None, aug_seqs=None,train_diffusion=False,use_diffusion_aug=False):
         seqs_emb_s = self.my_index_select(
             self.item_graph_embs_s, seqs) + self.item_emb_s(seqs)
         seqs_emb_e = self.my_index_select(
@@ -137,6 +139,10 @@ class DisenVGSAN(nn.Module):
 
         mu_e, logvar_e = self.encoder_e(seqs_emb_e, seqs)
         z_e = self.reparameterization(mu_e, logvar_e)
+        if getattr(self, "use_diffusion_aug", False):
+            # diffusion.sample() 产生去噪后的增强 z_e
+            fake_z_e = self.diffusion.sample(z_e).detach()
+            z_e = fake_z_e
 
         if not self.training:
             result = self.linear(z_s + z_e)
@@ -186,3 +192,41 @@ class DisenVGSAN(nn.Module):
         z_e = self.reparameterization(mu_e, logvar_e)
 
         return z_e
+
+    def extract_latent(self, seqs, neg_seqs=None, aug_seqs=None):
+        seqs_emb_s = self.my_index_select(
+            self.item_graph_embs_s, seqs) + self.item_emb_s(seqs)
+        seqs_emb_e = self.my_index_select(
+            self.item_graph_embs_e, seqs) + self.item_emb_e(seqs)
+        seqs_emb_s = seqs_emb_s * self.item_emb_s.embedding_dim ** 0.5
+        seqs_emb_e = seqs_emb_e * self.item_emb_e.embedding_dim ** 0.5
+        seqs_emb_s = self.add_position_embedding_s(
+            seqs, seqs_emb_s)
+        seqs_emb_e = self.add_position_embedding_e(
+            seqs, seqs_emb_e)
+        if self.training:
+            neg_seqs_emb = self.my_index_select(
+                self.item_graph_embs_e, neg_seqs) + self.item_emb_e(neg_seqs)
+            aug_seqs_emb = self.my_index_select(
+                self.item_graph_embs_e, aug_seqs) + self.item_emb_e(aug_seqs)
+            neg_seqs_emb = neg_seqs_emb * self.item_emb_e.embedding_dim ** 0.5
+            aug_seqs_emb = aug_seqs_emb * self.item_emb_e.embedding_dim ** 0.5
+            neg_seqs_emb = self.add_position_embedding_e(
+                neg_seqs, neg_seqs_emb)
+            aug_seqs_emb = self.add_position_embedding_e(
+                aug_seqs, aug_seqs_emb)
+
+        mu_s, logvar_s = self.encoder_s(seqs_emb_s, seqs)
+        z_s = self.reparameterization(mu_s, logvar_s)
+
+        if self.training:
+            neg_mu_e, neg_logvar_e = self.encoder_e(neg_seqs_emb, neg_seqs)
+            neg_z_e = self.reparameterization(neg_mu_e, neg_logvar_e)
+
+            aug_mu_e, aug_logvar_e = self.encoder_e(aug_seqs_emb, aug_seqs)
+            aug_z_e = self.reparameterization(aug_mu_e, aug_logvar_e)
+
+        mu_e, logvar_e = self.encoder_e(seqs_emb_e, seqs)
+        z_e = self.reparameterization(mu_e, logvar_e)
+
+        return z_s.detach(), z_e.detach()

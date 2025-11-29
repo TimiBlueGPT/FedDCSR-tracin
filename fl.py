@@ -121,9 +121,9 @@ def run_fl(clients, server, args):
         for round in range(1, args.epochs + 1):
             arr = np.array([2, 1, 3, 0])
             random_cids = server.choose_clients(n_clients, args.frac)
-            if round == 1:
+            """if round == 1:
                 for c_id in random_cids:
-                    clients[c_id].load_params()
+                    clients[c_id].load_params()"""
                 #load_and_eval_model(n_clients, clients, args)
             for c_id in range(4):
                 logging.info(clients[c_id].train_weight)
@@ -239,3 +239,73 @@ def run_fl_diffusion(clients, server, args):
 
     # 4. 训练完 diffusion 之后，你可以再做一次 eval 或保存最终模型
     load_and_eval_model(n_clients, clients, args)
+
+
+def run_fl_stage3(clients, server, args):
+    logging.info("==== Stage 3: Fine-tune main model with fake_z_e ====")
+
+    # 1. 加载阶段一训练好的主模型权重
+    for c_id in range(len(clients)):
+        clients[c_id].load_params()    # 你的 load_params 就是加载 ckpt
+
+    # 2. 启动 stage3 模式
+    for c in clients:
+        c.trainer.enable_stage3()
+    n_clients = len(clients)
+    # 3. 开始新的联邦训练
+    for round in range(1, args.epochs + 1):
+        logging.info(f"[Stage3] Round {round}/{args.epochs}")
+
+        random_cids = np.array([2, 1, 3, 0])
+
+        for c_id in tqdm(random_cids, ascii=True):
+            # 加载全局参数
+            clients[c_id].set_global_params(server.get_global_params())
+
+            # 本地训练（这次使用增强 z_e）
+            clients[c_id].train_epoch(round, args, global_params=server.global_params)
+
+            # 设置最新评估结果到服务器
+            if hasattr(server, "set_current_score"):
+                server.set_current_score(c_id, clients[c_id].latest_eval_score)
+
+        early_stopping = EarlyStopping(
+            args.checkpoint_dir, patience=args.es_patience, verbose=True)
+        lr_decay = LRDecay(args.lr, args.decay_epoch,
+                           args.optimizer, args.lr_decay,
+                           patience=args.ld_patience, verbose=True)
+        # 聚合参数（仍然是主模型联邦训练）
+        if "Fed" in args.method:
+            server.aggregate_params(clients, random_cids)
+            if args.method == "VeriFRL_Fed":
+                server.aggregate_reps(clients, random_cids)
+        if args.ckpt_interval and round % args.ckpt_interval == 0:
+            for c_id in range(n_clients):
+                clients[c_id].save_round_checkpoint(round)
+
+        if round % args.eval_interval == 0:
+            eval_logs = {}
+            for c_id in tqdm(range(n_clients), ascii=True):
+                if "Fed" in args.method:
+                    clients[c_id].set_global_params(
+                        server.get_global_params())
+                if c_id in random_cids:
+                    eval_log = clients[c_id].evaluation(mode="valid")
+                else:
+                    eval_log = clients[c_id].get_old_eval_log()
+                eval_logs[clients[c_id].domain] = eval_log
+
+            weights = dict((client.domain, client.valid_weight)
+                           for client in clients)
+            avg_eval_log = evaluation_logging(
+                eval_logs, round, weights, mode="valid")
+
+            early_stopping(avg_eval_log, clients, eval_logs)
+            if early_stopping.early_stop:
+                logging.info("Early stopping")
+                break
+
+            lr_decay(round, avg_eval_log, clients)
+
+    load_and_eval_model(n_clients, clients, args)
+    logging.info("===== Stage 3 done =====")
